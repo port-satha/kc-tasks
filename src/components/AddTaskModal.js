@@ -1,11 +1,11 @@
 'use client'
 import { useState } from 'react'
-import { BRANDS, BRAND_LABELS, PRIORITIES, STATUSES, MEMBERS } from '../lib/data'
+import { SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS } from '../lib/data'
 
 export default function AddTaskModal({ onClose, onAdd }) {
   const [form, setForm] = useState({
-    title: '', brand: 'onest', priority: 'Med',
-    assignee: 'P', due: '', status: 'To Do', notes: ''
+    title: '', section: 'Recently assigned', priority: '',
+    value: '', effort: '', progress: '', due: '', notes: ''
   })
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -17,7 +17,7 @@ export default function AddTaskModal({ onClose, onAdd }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl border border-gray-200 w-96 shadow-xl p-5" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl border border-gray-200 w-[420px] shadow-xl p-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-gray-900">New task</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
@@ -30,27 +30,10 @@ export default function AddTaskModal({ onClose, onAdd }) {
 
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="text-xs text-gray-500 font-medium block mb-1">Brand</label>
-            <select value={form.brand} onChange={e => set('brand', e.target.value)}
+            <label className="text-xs text-gray-500 font-medium block mb-1">Section</label>
+            <select value={form.section} onChange={e => set('section', e.target.value)}
               className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
-              {BRANDS.map(b => <option key={b} value={b}>{BRAND_LABELS[b]}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 font-medium block mb-1">Priority</label>
-            <select value={form.priority} onChange={e => set('priority', e.target.value)}
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
-              {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <div>
-            <label className="text-xs text-gray-500 font-medium block mb-1">Assignee</label>
-            <select value={form.assignee} onChange={e => set('assignee', e.target.value)}
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
-              {Object.entries(MEMBERS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
@@ -60,11 +43,43 @@ export default function AddTaskModal({ onClose, onAdd }) {
           </div>
         </div>
 
-        <label className="text-xs text-gray-500 font-medium block mb-1">Status</label>
-        <select value={form.status} onChange={e => set('status', e.target.value)}
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3 bg-white text-gray-800">
-          {STATUSES.map(s => <option key={s}>{s}</option>)}
-        </select>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs text-gray-500 font-medium block mb-1">Priority</label>
+            <select value={form.priority} onChange={e => set('priority', e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
+              <option value="">—</option>
+              {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 font-medium block mb-1">Value</label>
+            <select value={form.value} onChange={e => set('value', e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
+              <option value="">—</option>
+              {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs text-gray-500 font-medium block mb-1">Effort level</label>
+            <select value={form.effort} onChange={e => set('effort', e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
+              <option value="">—</option>
+              {EFFORT_LEVELS.map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 font-medium block mb-1">Task Progress</label>
+            <select value={form.progress} onChange={e => set('progress', e.target.value)}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
+              <option value="">—</option>
+              {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+        </div>
 
         <label className="text-xs text-gray-500 font-medium block mb-1">Notes</label>
         <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
@@ -77,7 +92,7 @@ export default function AddTaskModal({ onClose, onAdd }) {
             Cancel
           </button>
           <button onClick={submit}
-            className="text-xs px-4 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition-colors">
+            className="text-xs px-4 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
             Add task
           </button>
         </div>

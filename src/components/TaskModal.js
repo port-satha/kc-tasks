@@ -1,15 +1,20 @@
 'use client'
 import { useState } from 'react'
-import { STATUSES, MEMBERS, BRAND_COLORS, PRIORITY_COLORS, BRAND_LABELS } from '../lib/data'
+import { SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS } from '../lib/data'
 
 export default function TaskModal({ task, onClose, onUpdate, onDelete }) {
   const [notes, setNotes] = useState(task.notes || '')
-  const [status, setStatus] = useState(task.status)
+  const [section, setSection] = useState(task.section || 'Recently assigned')
+  const [priority, setPriority] = useState(task.priority || '')
+  const [value, setValue] = useState(task.value || '')
+  const [effort, setEffort] = useState(task.effort || '')
+  const [progress, setProgress] = useState(task.progress || '')
+  const [due, setDue] = useState(task.due || '')
   const [aiOutput, setAiOutput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
 
-  const save = (field, val) => {
-    onUpdate({ ...task, notes, status, [field]: val })
+  const saveField = (field, val) => {
+    onUpdate({ ...task, notes, section, priority, value, effort, progress, due, [field]: val })
   }
 
   const aiAssist = async (mode) => {
@@ -29,32 +34,79 @@ export default function TaskModal({ task, onClose, onUpdate, onDelete }) {
     setAiLoading(false)
   }
 
-  const m = MEMBERS[task.assignee]
-  const due = task.due ? new Date(task.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'No date'
+  const dueDate = task.due ? new Date(task.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'No date'
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-end p-4 pt-12" onClick={onClose}>
-      <div className="bg-white rounded-2xl border border-gray-200 w-96 max-h-[85vh] overflow-y-auto shadow-xl"
+      <div className="bg-white rounded-2xl border border-gray-200 w-[420px] max-h-[85vh] overflow-y-auto shadow-xl"
         onClick={e => e.stopPropagation()}>
         <div className="p-5">
           <div className="flex items-start justify-between mb-1">
             <h2 className="text-base font-semibold text-gray-900 leading-snug pr-4">{task.title}</h2>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none flex-shrink-0">×</button>
           </div>
-          <p className="text-xs text-gray-500 mb-3">{m?.label || task.assignee} · Due {due}</p>
+          <p className="text-xs text-gray-500 mb-4">Due {dueDate}</p>
+
+          {/* Tags */}
           <div className="flex flex-wrap gap-1.5 mb-4">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${BRAND_COLORS[task.brand]}`}>{BRAND_LABELS[task.brand]}</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLORS[task.priority]}`}>{task.priority} priority</span>
+            {task.priority && <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLORS[task.priority]}`}>{task.priority} priority</span>}
+            {task.value && <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${VALUE_COLORS[task.value]}`}>{task.value} value</span>}
+            {task.effort && <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${EFFORT_COLORS[task.effort]}`}>{task.effort}</span>}
+            {task.progress && <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PROGRESS_COLORS[task.progress]}`}>{task.progress}</span>}
           </div>
 
-          <label className="text-xs text-gray-500 font-medium block mb-1">Status</label>
-          <select value={status} onChange={e => { setStatus(e.target.value); save('status', e.target.value) }}
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-4 bg-white text-gray-800">
-            {STATUSES.map(s => <option key={s}>{s}</option>)}
+          {/* Section */}
+          <label className="text-xs text-gray-500 font-medium block mb-1">Section</label>
+          <select value={section} onChange={e => { setSection(e.target.value); saveField('section', e.target.value) }}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3 bg-white text-gray-800">
+            {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
+          {/* Fields grid */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="text-xs text-gray-500 font-medium block mb-1">Priority</label>
+              <select value={priority} onChange={e => { setPriority(e.target.value); saveField('priority', e.target.value) }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
+                <option value="">—</option>
+                {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-medium block mb-1">Value</label>
+              <select value={value} onChange={e => { setValue(e.target.value); saveField('value', e.target.value) }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
+                <option value="">—</option>
+                {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="text-xs text-gray-500 font-medium block mb-1">Effort level</label>
+              <select value={effort} onChange={e => { setEffort(e.target.value); saveField('effort', e.target.value) }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
+                <option value="">—</option>
+                {EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 font-medium block mb-1">Task Progress</label>
+              <select value={progress} onChange={e => { setProgress(e.target.value); saveField('progress', e.target.value) }}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800">
+                <option value="">—</option>
+                {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <label className="text-xs text-gray-500 font-medium block mb-1">Due date</label>
+          <input type="date" value={due} onChange={e => { setDue(e.target.value); saveField('due', e.target.value) }}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3 bg-white text-gray-800" />
+
           <label className="text-xs text-gray-500 font-medium block mb-1">Notes</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => save('notes', notes)}
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => saveField('notes', notes)}
             placeholder="Add notes..." rows={3}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-4 resize-none text-gray-800 placeholder-gray-400" />
 
