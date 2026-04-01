@@ -4,7 +4,7 @@ import { SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_CO
 import TaskModal from './TaskModal'
 import AddTaskModal from './AddTaskModal'
 
-const STORAGE_KEY = 'kc_tasks_v4'
+const STORAGE_KEY = 'kc_tasks_v5'
 
 export default function TaskApp() {
   const [tasks, setTasks] = useState([])
@@ -12,6 +12,7 @@ export default function TaskApp() {
   const [activeTask, setActiveTask] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState({})
+  const [expandedTasks, setExpandedTasks] = useState({})
   const [filterPriority, setFilterPriority] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -32,6 +33,23 @@ export default function TaskApp() {
     setCollapsedSections(prev => ({ ...prev, [sec]: !prev[sec] }))
   }
 
+  const toggleTaskExpand = (taskId) => {
+    setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }))
+  }
+
+  const toggleSubtask = (taskId, subtaskId) => {
+    const updated = tasks.map(t => {
+      if (t.id !== taskId) return t
+      return {
+        ...t,
+        subtasks: t.subtasks.map(st =>
+          st.id === subtaskId ? { ...st, done: !st.done } : st
+        )
+      }
+    })
+    save(updated)
+  }
+
   const filtered = tasks.filter(t => {
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false
     if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
@@ -46,7 +64,6 @@ export default function TaskApp() {
     grouped[sec].push(t)
   })
 
-  // Board view groups by Task Progress
   const boardColumns = {}
   TASK_PROGRESS.forEach(p => { boardColumns[p] = [] })
   filtered.forEach(t => {
@@ -62,8 +79,6 @@ export default function TaskApp() {
     return new Date(t.due) < today
   }
 
-  const totalFiltered = filtered.length
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Top bar */}
@@ -75,7 +90,7 @@ export default function TaskApp() {
           <span className="text-sm font-semibold text-gray-900">My tasks</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-gray-400">{totalFiltered} tasks</span>
+          <span className="text-xs text-gray-400">{filtered.length} tasks</span>
           <button onClick={() => setShowAdd(true)}
             className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center gap-1">
             <span>+</span> Add task
@@ -121,6 +136,9 @@ export default function TaskApp() {
           grouped={grouped}
           collapsedSections={collapsedSections}
           toggleSection={toggleSection}
+          expandedTasks={expandedTasks}
+          toggleTaskExpand={toggleTaskExpand}
+          toggleSubtask={toggleSubtask}
           onOpen={setActiveTask}
           isOverdue={isOverdue}
         />
@@ -151,7 +169,7 @@ export default function TaskApp() {
         <AddTaskModal
           onClose={() => setShowAdd(false)}
           onAdd={(t) => {
-            save([{ ...t, id: uid() }, ...tasks])
+            save([{ ...t, id: uid(), subtasks: [] }, ...tasks])
             setShowAdd(false)
           }}
         />
@@ -160,7 +178,7 @@ export default function TaskApp() {
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, onOpen, isOverdue }) {
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, onOpen, isOverdue }) {
   return (
     <div className="p-4 flex-1">
       {/* Column headers */}
@@ -178,7 +196,6 @@ function ListView({ grouped, collapsedSections, toggleSection, onOpen, isOverdue
         const collapsed = collapsedSections[section]
         return (
           <div key={section} className="mb-1">
-            {/* Section header */}
             <button
               onClick={() => toggleSection(section)}
               className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors group"
@@ -188,11 +205,37 @@ function ListView({ grouped, collapsedSections, toggleSection, onOpen, isOverdue
               <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{tasks.length}</span>
             </button>
 
-            {/* Tasks */}
             {!collapsed && (
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2">
                 {tasks.map(t => (
-                  <TaskRow key={t.id} task={t} onOpen={onOpen} isOverdue={isOverdue} />
+                  <div key={t.id}>
+                    <TaskRow
+                      task={t}
+                      onOpen={onOpen}
+                      isOverdue={isOverdue}
+                      hasSubtasks={t.subtasks && t.subtasks.length > 0}
+                      isExpanded={expandedTasks[t.id]}
+                      onToggleExpand={() => toggleTaskExpand(t.id)}
+                    />
+                    {/* Subtasks */}
+                    {expandedTasks[t.id] && t.subtasks && t.subtasks.length > 0 && (
+                      <div className="bg-gray-50 border-t border-gray-100">
+                        {t.subtasks.map(st => (
+                          <div key={st.id}
+                            className="flex items-center gap-2 pl-12 pr-4 py-1.5 border-b border-gray-100 last:border-0 hover:bg-gray-100 transition-colors"
+                          >
+                            <button
+                              onClick={() => toggleSubtask(t.id, st.id)}
+                              className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${st.done ? 'border-green-500 bg-green-500' : 'border-gray-300 hover:border-gray-400'}`}
+                            >
+                              {st.done && <span className="text-white text-[8px]">✓</span>}
+                            </button>
+                            <span className={`text-xs ${st.done ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{st.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
@@ -203,36 +246,56 @@ function ListView({ grouped, collapsedSections, toggleSection, onOpen, isOverdue
   )
 }
 
-function TaskRow({ task, onOpen, isOverdue }) {
+function TaskRow({ task, onOpen, isOverdue, hasSubtasks, isExpanded, onToggleExpand }) {
   const due = task.due ? new Date(task.due) : null
   const overdue = isOverdue(task)
+  const subtaskCount = task.subtasks ? task.subtasks.length : 0
+  const subtaskDone = task.subtasks ? task.subtasks.filter(s => s.done).length : 0
 
   return (
     <div
-      onClick={() => onOpen(task)}
       className="grid grid-cols-[1fr_100px_80px_80px_100px_100px] gap-2 px-4 py-2.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer items-center"
     >
       <div className="flex items-center gap-2 min-w-0">
-        <div className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${task.progress === 'Done' ? 'border-green-500 bg-green-500' : 'border-gray-300'}`}>
+        {hasSubtasks ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleExpand() }}
+            className="text-gray-400 hover:text-gray-600 text-xs flex-shrink-0 w-4"
+          >
+            {isExpanded ? '▾' : '▸'}
+          </button>
+        ) : (
+          <span className="w-4 flex-shrink-0"></span>
+        )}
+        <div
+          onClick={() => onOpen(task)}
+          className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${task.progress === 'Done' ? 'border-green-500 bg-green-500' : 'border-gray-300'}`}
+        >
           {task.progress === 'Done' && <span className="text-white text-xs">✓</span>}
         </div>
-        <span className={`text-sm truncate ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
+        <span
+          onClick={() => onOpen(task)}
+          className={`text-sm truncate ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}
+        >{task.title}</span>
+        {subtaskCount > 0 && (
+          <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>
+        )}
       </div>
-      <span className={`text-xs ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+      <span onClick={() => onOpen(task)} className={`text-xs ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
         {due ? due.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}
       </span>
       {task.priority ? (
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${PRIORITY_COLORS[task.priority]}`}>{task.priority}</span>
-      ) : <span className="text-xs text-gray-300">—</span>}
+        <span onClick={() => onOpen(task)} className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${PRIORITY_COLORS[task.priority]}`}>{task.priority}</span>
+      ) : <span onClick={() => onOpen(task)} className="text-xs text-gray-300">—</span>}
       {task.value ? (
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${VALUE_COLORS[task.value]}`}>{task.value}</span>
-      ) : <span className="text-xs text-gray-300">—</span>}
+        <span onClick={() => onOpen(task)} className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${VALUE_COLORS[task.value]}`}>{task.value}</span>
+      ) : <span onClick={() => onOpen(task)} className="text-xs text-gray-300">—</span>}
       {task.effort ? (
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${EFFORT_COLORS[task.effort]}`}>{task.effort.replace(' effort', '')}</span>
-      ) : <span className="text-xs text-gray-300">—</span>}
+        <span onClick={() => onOpen(task)} className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${EFFORT_COLORS[task.effort]}`}>{task.effort.replace(' effort', '')}</span>
+      ) : <span onClick={() => onOpen(task)} className="text-xs text-gray-300">—</span>}
       {task.progress ? (
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${PROGRESS_COLORS[task.progress]}`}>{task.progress}</span>
-      ) : <span className="text-xs text-gray-300">—</span>}
+        <span onClick={() => onOpen(task)} className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${PROGRESS_COLORS[task.progress]}`}>{task.progress}</span>
+      ) : <span onClick={() => onOpen(task)} className="text-xs text-gray-300">—</span>}
     </div>
   )
 }
@@ -269,6 +332,8 @@ function BoardView({ columns, onOpen, isOverdue }) {
 function BoardCard({ task, onOpen, isOverdue }) {
   const due = task.due ? new Date(task.due) : null
   const overdue = isOverdue(task)
+  const subtaskCount = task.subtasks ? task.subtasks.length : 0
+  const subtaskDone = task.subtasks ? task.subtasks.filter(s => s.done).length : 0
 
   return (
     <div onClick={() => onOpen(task)}
@@ -277,6 +342,7 @@ function BoardCard({ task, onOpen, isOverdue }) {
       <div className="flex flex-wrap items-center gap-1">
         {task.section && <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">{task.section}</span>}
         {task.priority && <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLORS[task.priority]}`}>{task.priority}</span>}
+        {subtaskCount > 0 && <span className="text-xs text-gray-400">{subtaskDone}/{subtaskCount}</span>}
         {due && <span className={`text-xs ml-auto ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>{due.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
       </div>
     </div>
