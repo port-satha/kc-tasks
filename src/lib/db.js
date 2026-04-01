@@ -4,7 +4,7 @@
 export async function fetchTasks(supabase, { projectId = null } = {}) {
   let query = supabase
     .from('tasks')
-    .select('*, subtasks(*), assigned_member:members(id, name, email)')
+    .select('*, subtasks(*), assigned_member:members!assigned_to(id, name, email)')
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
 
@@ -28,7 +28,7 @@ export async function createTask(supabase, taskData) {
   const { data, error } = await supabase
     .from('tasks')
     .insert(taskData)
-    .select('*, subtasks(*), assigned_member:members(id, name, email)')
+    .select('*, subtasks(*), assigned_member:members!assigned_to(id, name, email)')
     .single()
   if (error) throw error
   return data
@@ -40,7 +40,7 @@ export async function updateTask(supabase, taskId, updates) {
     .from('tasks')
     .update(cleanUpdates)
     .eq('id', taskId)
-    .select('*, subtasks(*), assigned_member:members(id, name, email)')
+    .select('*, subtasks(*), assigned_member:members!assigned_to(id, name, email)')
     .single()
   if (error) throw error
   return data
@@ -82,7 +82,7 @@ export async function deleteSubtask(supabase, subtaskId) {
 export async function fetchProjects(supabase) {
   const { data, error } = await supabase
     .from('projects')
-    .select('*, owner:profiles(id, full_name, email)')
+    .select('*, owner:profiles!owner_id(id, full_name, email)')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data || []
