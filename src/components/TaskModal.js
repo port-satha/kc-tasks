@@ -132,24 +132,45 @@ export default function TaskModal({ task, members, onClose, onUpdate, onDelete }
             </label>
             {subtasks.length > 0 && (
               <div className="bg-gray-50 rounded-lg border border-gray-200 mb-2 overflow-hidden">
-                {subtasks.map(st => (
-                  <div key={st.id} className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 last:border-0 group">
-                    <button onClick={() => handleToggleSubtask(st)}
-                      className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${st.done ? 'border-green-500 bg-green-500' : 'border-gray-300 hover:border-gray-400'}`}>
-                      {st.done && <span className="text-white text-[9px]">✓</span>}
-                    </button>
-                    <span className={`text-xs flex-1 ${st.done ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{st.title}</span>
-                    {st.due && (
-                      <span className="text-[10px] text-gray-400 flex-shrink-0">{new Date(st.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
-                    )}
-                    {st.assigned_to && members && (() => {
-                      const m = members.find(m => m.id === st.assigned_to)
-                      return m ? <span className="text-[10px] bg-gray-200 text-gray-600 rounded-full px-1.5 py-0.5 flex-shrink-0">{m.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2)}</span> : null
-                    })()}
-                    <button onClick={() => handleDeleteSubtask(st.id)}
-                      className="text-gray-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100">×</button>
-                  </div>
-                ))}
+                {subtasks.map(st => {
+                  const assignedMember = st.assigned_to && members ? members.find(m => m.id === st.assigned_to) : null
+                  return (
+                    <div key={st.id} className="border-b border-gray-100 last:border-0 group">
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <button onClick={() => handleToggleSubtask(st)}
+                          className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${st.done ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
+                          {st.done && <span className="text-white text-[9px]">✓</span>}
+                        </button>
+                        <span className={`text-xs flex-1 ${st.done ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{st.title}</span>
+                        <button onClick={() => handleDeleteSubtask(st.id)}
+                          className="text-gray-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 flex-shrink-0">×</button>
+                      </div>
+                      <div className="flex items-center gap-2 px-3 pb-2 pl-9">
+                        <input
+                          type="date"
+                          value={st.due || ''}
+                          onChange={e => updateSubtask(supabase, st.id, { due: e.target.value || null })}
+                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 w-28"
+                        />
+                        <select
+                          value={st.assigned_to || ''}
+                          onChange={e => updateSubtask(supabase, st.id, { assigned_to: e.target.value || null })}
+                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 flex-1 max-w-[140px]"
+                        >
+                          <option value="">No assignee</option>
+                          {(members || []).map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                        {assignedMember && (
+                          <span className="text-[10px] bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5 flex-shrink-0">
+                            {assignedMember.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
             <div className="flex gap-2">
