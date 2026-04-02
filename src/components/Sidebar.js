@@ -69,7 +69,10 @@ export default function Sidebar({ user, profile, projects }) {
                   pathname === `/projects/${p.id}` ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${p.is_private ? 'bg-amber-400' : 'bg-green-400'}`}></span>
+                {p.is_private
+                  ? <span className="text-xs flex-shrink-0 leading-none">🔒</span>
+                  : <span className="w-2 h-2 rounded-full flex-shrink-0 bg-green-400"></span>
+                }
                 <span className="truncate">{p.name}</span>
               </button>
             ))}

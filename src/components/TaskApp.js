@@ -7,7 +7,7 @@ import TaskModal from './TaskModal'
 import AddTaskModal from './AddTaskModal'
 import AvatarChip from './AvatarChip'
 
-export default function TaskApp({ projectId = null, projectName = null }) {
+export default function TaskApp({ projectId = null, projectName = null, settingsButton = null }) {
   const supabase = useSupabase()
   const { user } = useUser()
   const { tasks, loading } = useTasks(projectId)
@@ -97,6 +97,7 @@ export default function TaskApp({ projectId = null, projectName = null }) {
       {/* Top bar */}
       <div className="bg-white border-b border-gray-200 px-4 flex items-center gap-3 h-12 sticky top-0 z-10">
         <span className="text-sm font-semibold text-gray-900">{projectName || 'My tasks'}</span>
+        {settingsButton}
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-gray-400">{filtered.length} tasks</span>
           <button onClick={() => setShowAdd(true)}
