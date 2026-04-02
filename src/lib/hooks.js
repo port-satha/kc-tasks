@@ -111,12 +111,7 @@ export function useMembers() {
 
   useEffect(() => {
     load()
-    const channel = supabase
-      .channel('members')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, () => load())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [supabase, load])
+  }, [load])
 
   return { members, loading, reload: load }
 }
