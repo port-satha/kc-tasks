@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useSupabase } from '../lib/hooks'
 import AvatarChip from './AvatarChip'
+import NotificationBell from './NotificationBell'
 
 export default function Sidebar({ user, profile, projects }) {
   const [collapsed, setCollapsed] = useState(false)
@@ -40,9 +41,12 @@ export default function Sidebar({ user, profile, projects }) {
             <span className="text-sm font-semibold text-gray-900 truncate">KC Tasks</span>
           </div>
         )}
-        <button onClick={() => setCollapsed(!collapsed)} className="text-gray-400 hover:text-gray-600 text-xs p-1">
-          {collapsed ? '▶' : '◀'}
-        </button>
+        <div className="flex items-center gap-1">
+          {user?.id && <NotificationBell userId={user.id} />}
+          <button onClick={() => setCollapsed(!collapsed)} className="text-gray-400 hover:text-gray-600 text-xs p-1">
+            {collapsed ? '▶' : '◀'}
+          </button>
+        </div>
       </div>
 
       {/* Nav */}

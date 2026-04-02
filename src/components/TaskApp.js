@@ -39,10 +39,11 @@ export default function TaskApp({ projectId = null, projectName = null }) {
 
   const handleUpdateTask = useCallback(async (updated) => {
     try {
-      const result = await updateTask(supabase, updated.id, updated)
+      const previousAssignedTo = activeTask?.assigned_to || null
+      const result = await updateTask(supabase, updated.id, updated, { previousAssignedTo })
       setActiveTask(result)
     } catch (err) { console.error('Failed to update task:', err) }
-  }, [supabase])
+  }, [supabase, activeTask])
 
   const handleDeleteTask = useCallback(async (id) => {
     try { await deleteTask(supabase, id); setActiveTask(null) }

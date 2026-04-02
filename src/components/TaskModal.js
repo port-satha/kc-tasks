@@ -139,6 +139,13 @@ export default function TaskModal({ task, members, onClose, onUpdate, onDelete }
                       {st.done && <span className="text-white text-[9px]">✓</span>}
                     </button>
                     <span className={`text-xs flex-1 ${st.done ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{st.title}</span>
+                    {st.due && (
+                      <span className="text-[10px] text-gray-400 flex-shrink-0">{new Date(st.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                    )}
+                    {st.assigned_to && members && (() => {
+                      const m = members.find(m => m.id === st.assigned_to)
+                      return m ? <span className="text-[10px] bg-gray-200 text-gray-600 rounded-full px-1.5 py-0.5 flex-shrink-0">{m.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2)}</span> : null
+                    })()}
                     <button onClick={() => handleDeleteSubtask(st.id)}
                       className="text-gray-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100">×</button>
                   </div>
