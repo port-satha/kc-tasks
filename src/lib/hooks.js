@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from './supabase/client'
-import { fetchTasks, fetchProjects, fetchMembers } from './db'
+import { fetchTasks, fetchProjects, fetchMembers, ensureCurrentUserIsMember } from './db'
 import { fetchNotifications, getUnreadCount } from './notifications'
 
 export function useSupabase() {
@@ -101,6 +101,8 @@ export function useMembers() {
 
   const load = useCallback(async () => {
     try {
+      // Ensure current user exists as a member first
+      await ensureCurrentUserIsMember(supabase)
       const data = await fetchMembers(supabase)
       setMembers(data)
     } catch (err) {

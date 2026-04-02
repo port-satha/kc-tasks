@@ -151,14 +151,72 @@ export async function fetchMembers(supabase) {
   return data || []
 }
 
-export async function createMember(supabase, { name, email, role = 'member' }) {
+export async function createMember(supabase, { name, email, role = 'member', profile_id = null }) {
+  // If email is provided but no profile_id, try to find matching profile
+  if (email && !profile_id) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .single()
+    if (profile) profile_id = profile.id
+  }
+
   const { data, error } = await supabase
     .from('members')
-    .insert({ name, email, role })
+    .insert({ name, email, role, profile_id })
     .select()
     .single()
   if (error) throw error
   return data
+}
+
+export async function ensureCurrentUserIsMember(supabase) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  // Check if already a member
+  const { data: existing } = await supabase
+    .from('members')
+    .select('*')
+    .eq('profile_id', user.id)
+    .single()
+  if (existing) return existing
+
+  // Check if member exists with same email but no profile_id
+  const { data: emailMatch } = await supabase
+    .from('members')
+    .select('*')
+    .eq('email', user.email)
+    .single()
+  if (emailMatch) {
+    const { data: updated } = await supabase
+      .from('members')
+      .update({ profile_id: user.id })
+      .eq('id', emailMatch.id)
+      .select()
+      .single()
+    return updated
+  }
+
+  // Create new member from profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', user.id)
+    .single()
+
+  const { data: newMember } = await supabase
+    .from('members')
+    .insert({
+      name: profile?.full_name || user.email.split('@')[0],
+      email: user.email,
+      role: 'admin',
+      profile_id: user.id
+    })
+    .select()
+    .single()
+  return newMember
 }
 
 export async function updateMember(supabase, memberId, updates) {
