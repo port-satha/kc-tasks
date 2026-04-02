@@ -1,12 +1,15 @@
 'use client'
 import { useState } from 'react'
 import { SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS } from '../lib/data'
-import { useSupabase } from '../lib/hooks'
+import { useSupabase, useUser } from '../lib/hooks'
 import { createSubtask, updateSubtask, deleteSubtask } from '../lib/db'
 import MemberPicker from './MemberPicker'
+import TaskComments from './TaskComments'
 
 export default function TaskModal({ task, members, onClose, onUpdate, onDelete }) {
   const supabase = useSupabase()
+  const { user } = useUser()
+  const currentMember = members?.find(m => m.profile_id === user?.id)
   const [notes, setNotes] = useState(task.notes || '')
   const [section, setSection] = useState(task.section || 'Recently assigned')
   const [priority, setPriority] = useState(task.priority || '')
@@ -184,6 +187,15 @@ export default function TaskModal({ task, members, onClose, onUpdate, onDelete }
           <label className="text-xs text-gray-500 font-medium block mb-1">Notes</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => saveField('notes', notes)}
             placeholder="Add notes..." rows={3} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-4 resize-none text-gray-800 placeholder-gray-400" />
+
+          {/* Comments / Discussion */}
+          <div className="bg-gray-50 rounded-xl p-3 mb-4">
+            <TaskComments
+              taskId={task.id}
+              members={members || []}
+              currentMemberId={currentMember?.id}
+            />
+          </div>
 
           {/* AI Assist */}
           <div className="bg-gray-50 rounded-xl p-3 mb-4">
