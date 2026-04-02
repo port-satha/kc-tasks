@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from './supabase/client'
 import { fetchTasks, fetchProjects, fetchMembers, ensureCurrentUserIsMember } from './db'
 import { fetchNotifications, getUnreadCount } from './notifications'
+import { fetchComments } from './comments'
 
 export function useSupabase() {
   return useMemo(() => getSupabaseBrowser(), [])
@@ -157,4 +158,40 @@ export function useNotifications(userId) {
   }, [supabase, userId, load])
 
   return { notifications, unreadCount, loading, reload: load }
+}
+
+export function useComments(taskId) {
+  const supabase = useSupabase()
+  const [comments, setComments] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    if (!taskId) { setLoading(false); return }
+    try {
+      const data = await fetchComments(supabase, taskId)
+      setComments(data)
+    } catch (err) {
+      console.error('Failed to load comments:', err)
+    }
+    setLoading(false)
+  }, [supabase, taskId])
+
+  useEffect(() => {
+    if (!taskId) { setLoading(false); return }
+    load()
+
+    const channel = supabase
+      .channel(`comments-${taskId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'comments',
+        filter: `task_id=eq.${taskId}`
+      }, () => load())
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [supabase, taskId, load])
+
+  return { comments, loading, reload: load }
 }
