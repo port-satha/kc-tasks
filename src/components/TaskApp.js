@@ -19,10 +19,18 @@ export default function TaskApp({ projectId = null, projectName = null }) {
   const [expandedTasks, setExpandedTasks] = useState({})
   const [filterPriority, setFilterPriority] = useState('all')
   const [filterAssignee, setFilterAssignee] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('active')
   const [searchQuery, setSearchQuery] = useState('')
 
   const toggleSection = (sec) => setCollapsedSections(prev => ({ ...prev, [sec]: !prev[sec] }))
   const toggleTaskExpand = (taskId) => setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }))
+
+  const handleToggleTaskDone = useCallback(async (task) => {
+    try {
+      const newProgress = task.progress === 'Done' ? '' : 'Done'
+      await updateTask(supabase, task.id, { progress: newProgress })
+    } catch (err) { console.error('Failed to toggle task:', err) }
+  }, [supabase])
 
   const handleToggleSubtask = useCallback(async (taskId, subtaskId, currentDone) => {
     try { await updateSubtask(supabase, subtaskId, { done: !currentDone }) }
@@ -51,6 +59,8 @@ export default function TaskApp({ projectId = null, projectName = null }) {
   }, [supabase])
 
   const filtered = tasks.filter(t => {
+    if (filterStatus === 'active' && t.progress === 'Done') return false
+    if (filterStatus === 'done' && t.progress !== 'Done') return false
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false
     if (filterAssignee !== 'all' && t.assigned_to !== filterAssignee) return false
     if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
@@ -107,6 +117,15 @@ export default function TaskApp({ projectId = null, projectName = null }) {
           ))}
         </div>
         <div className="flex gap-1 items-center">
+          <span className="text-xs text-gray-400 mr-1">Status:</span>
+          {[['all', 'All'], ['active', 'Active'], ['done', 'Done']].map(([key, label]) => (
+            <button key={key} onClick={() => setFilterStatus(key)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${filterStatus === key ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1 items-center">
           <span className="text-xs text-gray-400 mr-1">Priority:</span>
           {['all', ...PRIORITIES].map(p => (
             <button key={p} onClick={() => setFilterPriority(p)}
@@ -137,7 +156,7 @@ export default function TaskApp({ projectId = null, projectName = null }) {
       {view === 'list' ? (
         <ListView grouped={grouped} collapsedSections={collapsedSections} toggleSection={toggleSection}
           expandedTasks={expandedTasks} toggleTaskExpand={toggleTaskExpand} toggleSubtask={handleToggleSubtask}
-          onOpen={setActiveTask} isOverdue={isOverdue} />
+          toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue} />
       ) : (
         <BoardView columns={boardColumns} onOpen={setActiveTask} isOverdue={isOverdue} />
       )}
@@ -148,7 +167,7 @@ export default function TaskApp({ projectId = null, projectName = null }) {
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, onOpen, isOverdue }) {
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue }) {
   return (
     <div className="p-4 flex-1">
       <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1">
@@ -169,7 +188,7 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2">
                 {tasks.map(t => (
                   <div key={t.id}>
-                    <TaskRow task={t} onOpen={onOpen} isOverdue={isOverdue}
+                    <TaskRow task={t} onOpen={onOpen} isOverdue={isOverdue} onToggleDone={toggleTaskDone}
                       hasSubtasks={t.subtasks && t.subtasks.length > 0}
                       isExpanded={expandedTasks[t.id]} onToggleExpand={() => toggleTaskExpand(t.id)} />
                     {expandedTasks[t.id] && t.subtasks && t.subtasks.length > 0 && (
@@ -196,7 +215,7 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
   )
 }
 
-function TaskRow({ task, onOpen, isOverdue, hasSubtasks, isExpanded, onToggleExpand }) {
+function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand }) {
   const due = task.due ? new Date(task.due) : null
   const overdue = isOverdue(task)
   const subtaskCount = task.subtasks ? task.subtasks.length : 0
@@ -211,9 +230,10 @@ function TaskRow({ task, onOpen, isOverdue, hasSubtasks, isExpanded, onToggleExp
             {isExpanded ? '▾' : '▸'}
           </button>
         ) : <span className="w-4 flex-shrink-0"></span>}
-        <div onClick={() => onOpen(task)} className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center ${task.progress === 'Done' ? 'border-green-500 bg-green-500' : 'border-gray-300'}`}>
+        <button onClick={(e) => { e.stopPropagation(); onToggleDone(task) }}
+          className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${task.progress === 'Done' ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
           {task.progress === 'Done' && <span className="text-white text-xs">✓</span>}
-        </div>
+        </button>
         <span onClick={() => onOpen(task)} className={`text-sm truncate ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
