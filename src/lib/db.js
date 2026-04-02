@@ -1,4 +1,5 @@
 // Data access layer for Supabase
+import { createNotification } from './notifications'
 
 // ===== TASKS =====
 export async function fetchTasks(supabase, { projectId = null } = {}) {
@@ -34,7 +35,7 @@ export async function createTask(supabase, taskData) {
   return data
 }
 
-export async function updateTask(supabase, taskId, updates) {
+export async function updateTask(supabase, taskId, updates, { previousAssignedTo = null } = {}) {
   const { assigned_member, subtasks, ...cleanUpdates } = updates
   const { data, error } = await supabase
     .from('tasks')
@@ -43,6 +44,32 @@ export async function updateTask(supabase, taskId, updates) {
     .select('*, subtasks(*)')
     .single()
   if (error) throw error
+
+  // If assigned_to changed, notify the new assignee
+  if (cleanUpdates.assigned_to && cleanUpdates.assigned_to !== previousAssignedTo) {
+    try {
+      const { data: member } = await supabase
+        .from('members')
+        .select('id, name, profile_id')
+        .eq('id', cleanUpdates.assigned_to)
+        .single()
+
+      if (member?.profile_id) {
+        const taskTitle = data.title || 'a task'
+        const projectId = data.project_id || ''
+        await createNotification(supabase, {
+          user_id: member.profile_id,
+          type: 'task_assigned',
+          title: 'Task assigned to you',
+          message: `You were assigned to "${taskTitle}"`,
+          link: projectId ? `/projects/${projectId}` : '/'
+        })
+      }
+    } catch (notifErr) {
+      console.error('Failed to create notification:', notifErr)
+    }
+  }
+
   return data
 }
 

@@ -23,8 +23,13 @@ async function getAllTasks(projectGid, token) {
 }
 
 async function getSubtasks(taskGid, token) {
-  const res = await asanaFetch(`/tasks/${taskGid}/subtasks?opt_fields=name,completed`, token)
-  return res.data.map(s => ({ title: s.name, done: s.completed }))
+  const res = await asanaFetch(`/tasks/${taskGid}/subtasks?opt_fields=name,completed,due_on,assignee,assignee.name`, token)
+  return res.data.map(s => ({
+    title: s.name,
+    done: s.completed,
+    due: s.due_on || null,
+    assignee_name: s.assignee?.name || null
+  }))
 }
 
 // GET: list Asana projects (for reference)
@@ -128,6 +133,13 @@ async function importSubtasksForProject(asanaProjectGid, dbProjectId, token, sup
     taskMap[t.title.trim().toLowerCase()] = t.id
   }
 
+  // Build a member name lookup for assignee mapping
+  const { data: dbMembers } = await supabase.from('members').select('id, name')
+  const memberMap = {}
+  for (const m of (dbMembers || [])) {
+    memberMap[m.name.trim().toLowerCase()] = m.id
+  }
+
   let subtaskCount = 0
 
   for (const asanaTask of tasksWithSubs) {
@@ -140,7 +152,9 @@ async function importSubtasksForProject(asanaProjectGid, dbProjectId, token, sup
         task_id: dbTaskId,
         title: s.title,
         done: s.done,
-        sort_order: i + 1
+        sort_order: i + 1,
+        due: s.due || null,
+        assigned_to: s.assignee_name ? (memberMap[s.assignee_name.trim().toLowerCase()] || null) : null
       }))
 
       const { error } = await supabase.from('subtasks').insert(rows)

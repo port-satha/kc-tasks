@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from './supabase/client'
 import { fetchTasks, fetchProjects, fetchMembers } from './db'
+import { fetchNotifications, getUnreadCount } from './notifications'
 
 export function useSupabase() {
   return useMemo(() => getSupabaseBrowser(), [])
@@ -118,4 +119,45 @@ export function useMembers() {
   }, [supabase, load])
 
   return { members, loading, reload: load }
+}
+
+export function useNotifications(userId) {
+  const supabase = useSupabase()
+  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    if (!userId) return
+    try {
+      const [data, count] = await Promise.all([
+        fetchNotifications(supabase, userId),
+        getUnreadCount(supabase, userId)
+      ])
+      setNotifications(data)
+      setUnreadCount(count)
+    } catch (err) {
+      console.error('Failed to load notifications:', err)
+    }
+    setLoading(false)
+  }, [supabase, userId])
+
+  useEffect(() => {
+    if (!userId) { setLoading(false); return }
+    load()
+
+    const channel = supabase
+      .channel(`notifications-${userId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${userId}`
+      }, () => load())
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [supabase, userId, load])
+
+  return { notifications, unreadCount, loading, reload: load }
 }
