@@ -27,11 +27,14 @@ async function getSubtasks(taskGid, token) {
   return res.data.map(s => ({ title: s.name, done: s.completed }))
 }
 
+// GET: list Asana projects (for reference)
+// POST with project_gid: import subtasks for one project
+// POST without project_gid: list all Asana projects with task counts
 export async function POST(req) {
   try {
-    const { asana_token } = await req.json()
+    const { asana_token, project_gid } = await req.json()
     if (!asana_token) {
-      return Response.json({ error: 'asana_token is required in request body' }, { status: 400 })
+      return Response.json({ error: 'asana_token is required' }, { status: 400 })
     }
 
     const supabase = getSupabaseServer()
@@ -40,76 +43,110 @@ export async function POST(req) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get user's workspace first
+    // If no project_gid, list all Asana projects so user knows what to import
+    if (!project_gid) {
+      const meRes = await asanaFetch('/users/me?opt_fields=workspaces', asana_token)
+      const workspaceGid = meRes.data.workspaces[0].gid
+      const projectsRes = await asanaFetch(`/projects?workspace=${workspaceGid}&limit=100&opt_fields=name`, asana_token)
+
+      const { data: dbProjects } = await supabase.from('projects').select('id, name')
+      const dbNames = new Set(dbProjects.map(p => p.name.trim().toLowerCase()))
+
+      const projects = projectsRes.data.map(p => ({
+        gid: p.gid,
+        name: p.name,
+        in_db: dbNames.has(p.name.trim().toLowerCase())
+      }))
+
+      return Response.json({
+        message: 'Call again with project_gid to import subtasks for a specific project. Or use "all" to import all.',
+        projects
+      })
+    }
+
+    // If project_gid is "all", process all projects one by one
+    if (project_gid === 'all') {
+      const meRes = await asanaFetch('/users/me?opt_fields=workspaces', asana_token)
+      const workspaceGid = meRes.data.workspaces[0].gid
+      const projectsRes = await asanaFetch(`/projects?workspace=${workspaceGid}&limit=100&opt_fields=name`, asana_token)
+      const asanaProjects = projectsRes.data
+
+      const { data: dbProjects } = await supabase.from('projects').select('id, name')
+      const projectMap = {}
+      for (const p of dbProjects) {
+        projectMap[p.name.trim().toLowerCase()] = p.id
+      }
+
+      const results = []
+      for (const ap of asanaProjects) {
+        const dbProjectId = projectMap[ap.name.trim().toLowerCase()]
+        if (!dbProjectId) continue
+
+        const count = await importSubtasksForProject(ap.gid, dbProjectId, asana_token, supabase)
+        results.push({ project: ap.name, subtasks: count })
+      }
+
+      return Response.json({ success: true, results })
+    }
+
+    // Import subtasks for a single project
+    const { data: dbProjects } = await supabase.from('projects').select('id, name')
     const meRes = await asanaFetch('/users/me?opt_fields=workspaces', asana_token)
     const workspaceGid = meRes.data.workspaces[0].gid
-
-    // Get all projects from Asana
     const projectsRes = await asanaFetch(`/projects?workspace=${workspaceGid}&limit=100&opt_fields=name`, asana_token)
-    const asanaProjects = projectsRes.data
+    const asanaProject = projectsRes.data.find(p => p.gid === project_gid)
 
-    // Get all projects from Supabase
-    const { data: dbProjects } = await supabase.from('projects').select('id, name')
-    const projectMap = {}
-    for (const p of dbProjects) {
-      projectMap[p.name.trim().toLowerCase()] = p.id
+    if (!asanaProject) {
+      return Response.json({ error: 'Project not found in Asana' }, { status: 404 })
     }
 
-    const results = []
-
-    for (const asanaProject of asanaProjects) {
-      const dbProjectId = projectMap[asanaProject.name.trim().toLowerCase()]
-      if (!dbProjectId) {
-        results.push({ project: asanaProject.name, skipped: 'not found in DB' })
-        continue
-      }
-
-      // Get tasks with subtasks from Asana
-      const tasksWithSubs = await getAllTasks(asanaProject.gid, asana_token)
-      if (tasksWithSubs.length === 0) {
-        results.push({ project: asanaProject.name, subtasks: 0 })
-        continue
-      }
-
-      // Get all tasks from this project in Supabase
-      const { data: dbTasks } = await supabase
-        .from('tasks')
-        .select('id, title')
-        .eq('project_id', dbProjectId)
-
-      const taskMap = {}
-      for (const t of dbTasks) {
-        taskMap[t.title.trim().toLowerCase()] = t.id
-      }
-
-      let subtaskCount = 0
-
-      for (const asanaTask of tasksWithSubs) {
-        const dbTaskId = taskMap[asanaTask.name.trim().toLowerCase()]
-        if (!dbTaskId) continue
-
-        // Fetch subtasks from Asana
-        const subtasks = await getSubtasks(asanaTask.gid, asana_token)
-
-        // Insert into Supabase
-        if (subtasks.length > 0) {
-          const rows = subtasks.map((s, i) => ({
-            task_id: dbTaskId,
-            title: s.title,
-            done: s.done,
-            sort_order: i + 1
-          }))
-
-          const { error } = await supabase.from('subtasks').insert(rows)
-          if (!error) subtaskCount += rows.length
-        }
-      }
-
-      results.push({ project: asanaProject.name, subtasks: subtaskCount })
+    const dbProject = dbProjects.find(p => p.name.trim().toLowerCase() === asanaProject.name.trim().toLowerCase())
+    if (!dbProject) {
+      return Response.json({ error: 'Project not found in database' }, { status: 404 })
     }
 
-    return Response.json({ success: true, results })
+    const count = await importSubtasksForProject(project_gid, dbProject.id, asana_token, supabase)
+    return Response.json({ success: true, project: asanaProject.name, subtasks: count })
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 })
   }
+}
+
+async function importSubtasksForProject(asanaProjectGid, dbProjectId, token, supabase) {
+  // Get tasks with subtasks from Asana (paginated)
+  const tasksWithSubs = await getAllTasks(asanaProjectGid, token)
+  if (tasksWithSubs.length === 0) return 0
+
+  // Get all tasks from this project in Supabase
+  const { data: dbTasks } = await supabase
+    .from('tasks')
+    .select('id, title')
+    .eq('project_id', dbProjectId)
+
+  const taskMap = {}
+  for (const t of dbTasks) {
+    taskMap[t.title.trim().toLowerCase()] = t.id
+  }
+
+  let subtaskCount = 0
+
+  for (const asanaTask of tasksWithSubs) {
+    const dbTaskId = taskMap[asanaTask.name.trim().toLowerCase()]
+    if (!dbTaskId) continue
+
+    const subtasks = await getSubtasks(asanaTask.gid, token)
+    if (subtasks.length > 0) {
+      const rows = subtasks.map((s, i) => ({
+        task_id: dbTaskId,
+        title: s.title,
+        done: s.done,
+        sort_order: i + 1
+      }))
+
+      const { error } = await supabase.from('subtasks').insert(rows)
+      if (!error) subtaskCount += rows.length
+    }
+  }
+
+  return subtaskCount
 }
