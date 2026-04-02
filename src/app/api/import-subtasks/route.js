@@ -40,8 +40,12 @@ export async function POST(req) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get user's workspace first
+    const meRes = await asanaFetch('/users/me?opt_fields=workspaces', asana_token)
+    const workspaceGid = meRes.data.workspaces[0].gid
+
     // Get all projects from Asana
-    const projectsRes = await asanaFetch('/projects?limit=100&opt_fields=name', asana_token)
+    const projectsRes = await asanaFetch(`/projects?workspace=${workspaceGid}&limit=100&opt_fields=name`, asana_token)
     const asanaProjects = projectsRes.data
 
     // Get all projects from Supabase
