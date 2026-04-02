@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from './supabase/client'
 import { fetchTasks, fetchProjects, fetchMembers } from './db'
 import { fetchNotifications, getUnreadCount } from './notifications'
@@ -98,7 +98,6 @@ export function useMembers() {
   const supabase = useSupabase()
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
-  const channelId = useRef(`members-${Math.random().toString(36).slice(2, 8)}`)
 
   const load = useCallback(async () => {
     try {
@@ -112,12 +111,7 @@ export function useMembers() {
 
   useEffect(() => {
     load()
-    const channel = supabase
-      .channel(channelId.current)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, () => load())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [supabase, load])
+  }, [load])
 
   return { members, loading, reload: load }
 }
