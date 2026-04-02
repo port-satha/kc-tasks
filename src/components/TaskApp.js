@@ -1,6 +1,6 @@
 'use client'
 import { useState, useCallback } from 'react'
-import { SECTIONS, PRIORITIES, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
+import { SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
 import { useSupabase, useUser, useTasks, useMembers } from '../lib/hooks'
 import { createTask, updateTask, deleteTask, updateSubtask } from '../lib/db'
 import TaskModal from './TaskModal'
@@ -56,6 +56,13 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const handleDeleteTask = useCallback(async (id) => {
     try { await deleteTask(supabase, id); setActiveTask(null) }
     catch (err) { console.error('Failed to delete task:', err) }
+  }, [supabase])
+
+  const handleInlineUpdate = useCallback(async (task, field, value) => {
+    try {
+      const previousAssignedTo = field === 'assigned_to' ? task.assigned_to : null
+      await updateTask(supabase, task.id, { [field]: value || null }, { previousAssignedTo })
+    } catch (err) { console.error('Failed to update task:', err) }
   }, [supabase])
 
   const filtered = tasks.filter(t => {
@@ -157,7 +164,8 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       {view === 'list' ? (
         <ListView grouped={grouped} collapsedSections={collapsedSections} toggleSection={toggleSection}
           expandedTasks={expandedTasks} toggleTaskExpand={toggleTaskExpand} toggleSubtask={handleToggleSubtask}
-          toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue} />
+          toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue}
+          members={members} onInlineUpdate={handleInlineUpdate} />
       ) : (
         <BoardView columns={boardColumns} onOpen={setActiveTask} isOverdue={isOverdue} />
       )}
@@ -168,7 +176,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue }) {
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate }) {
   return (
     <div className="p-4 flex-1">
       <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1">
@@ -191,7 +199,8 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
                   <div key={t.id}>
                     <TaskRow task={t} onOpen={onOpen} isOverdue={isOverdue} onToggleDone={toggleTaskDone}
                       hasSubtasks={t.subtasks && t.subtasks.length > 0}
-                      isExpanded={expandedTasks[t.id]} onToggleExpand={() => toggleTaskExpand(t.id)} />
+                      isExpanded={expandedTasks[t.id]} onToggleExpand={() => toggleTaskExpand(t.id)}
+                      members={members} onInlineUpdate={onInlineUpdate} />
                     {expandedTasks[t.id] && t.subtasks && t.subtasks.length > 0 && (
                       <div className="bg-gray-50 border-t border-gray-100">
                         {t.subtasks.map(st => (
@@ -216,15 +225,15 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
   )
 }
 
-function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand }) {
-  const due = task.due ? new Date(task.due) : null
+function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate }) {
   const overdue = isOverdue(task)
   const subtaskCount = task.subtasks ? task.subtasks.length : 0
   const subtaskDone = task.subtasks ? task.subtasks.filter(s => s.done).length : 0
-  const assignee = task.assigned_member
+
+  const selectClass = "text-[11px] bg-transparent border border-transparent hover:border-gray-200 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full appearance-none"
 
   return (
-    <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 cursor-pointer items-center">
+    <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center">
       <div className="flex items-center gap-2 min-w-0">
         {hasSubtasks ? (
           <button onClick={(e) => { e.stopPropagation(); onToggleExpand() }} className="text-gray-400 hover:text-gray-600 text-xs flex-shrink-0 w-4">
@@ -235,23 +244,55 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
           className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${task.progress === 'Done' ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
           {task.progress === 'Done' && <span className="text-white text-xs">✓</span>}
         </button>
-        <span onClick={() => onOpen(task)} className={`text-sm truncate ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
+        <span onClick={() => onOpen(task)} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
-      <span onClick={() => onOpen(task)} className={`text-xs ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-        {due ? due.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '—'}
-      </span>
-      {task.priority ? <span onClick={() => onOpen(task)} className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${PRIORITY_COLORS[task.priority]}`}>{task.priority}</span>
-        : <span onClick={() => onOpen(task)} className="text-xs text-gray-300">—</span>}
-      {task.value ? <span onClick={() => onOpen(task)} className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${VALUE_COLORS[task.value]}`}>{task.value}</span>
-        : <span onClick={() => onOpen(task)} className="text-xs text-gray-300">—</span>}
-      {task.effort ? <span onClick={() => onOpen(task)} className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${EFFORT_COLORS[task.effort]}`}>{task.effort.replace(' effort', '')}</span>
-        : <span onClick={() => onOpen(task)} className="text-xs text-gray-300">—</span>}
-      {task.progress ? <span onClick={() => onOpen(task)} className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${PROGRESS_COLORS[task.progress]}`}>{task.progress}</span>
-        : <span onClick={() => onOpen(task)} className="text-xs text-gray-300">—</span>}
-      <div onClick={() => onOpen(task)}>
-        {assignee ? <AvatarChip name={assignee.name} size="sm" /> : <span className="text-xs text-gray-300">—</span>}
-      </div>
+      <input
+        type="date"
+        value={task.due || ''}
+        onChange={e => onInlineUpdate(task, 'due', e.target.value)}
+        className={`text-[11px] bg-transparent border border-transparent hover:border-gray-200 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full ${overdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}
+      />
+      <select
+        value={task.priority || ''}
+        onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
+        className={`${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+      </select>
+      <select
+        value={task.value || ''}
+        onChange={e => onInlineUpdate(task, 'value', e.target.value)}
+        className={`${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+      </select>
+      <select
+        value={task.effort || ''}
+        onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
+        className={`${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
+      </select>
+      <select
+        value={task.progress || ''}
+        onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
+        className={`${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
+      </select>
+      <select
+        value={task.assigned_to || ''}
+        onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
+        className={`${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {(members || []).map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+      </select>
     </div>
   )
 }
