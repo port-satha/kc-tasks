@@ -495,15 +495,13 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <span onClick={() => onOpen(task)} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
-      <div className="relative" {...stopDrag}>
-        <button type="button"
-          onClick={() => { try { dateRef.current?.showPicker() } catch(e) { dateRef.current?.focus(); dateRef.current?.click() } }}
-          className={`text-[11px] border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer w-full text-left ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}>
+      <div className="relative h-7" {...stopDrag}>
+        <span className={`absolute inset-0 flex items-center text-[11px] px-1 ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}>
           {task.due ? formatSmartDate(task.due) : '—'}
-        </button>
+        </span>
         <input ref={dateRef} type="date" value={task.due || ''}
           onChange={e => onInlineUpdate(task, 'due', e.target.value)}
-          className="absolute inset-0 opacity-0 pointer-events-none" tabIndex={-1} />
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
       </div>
       <select {...stopDrag}
         value={task.priority || ''}
