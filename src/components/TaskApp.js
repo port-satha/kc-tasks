@@ -491,17 +491,12 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <span onClick={() => onOpen(task)} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
-      <div className="relative">
-        <span className={`text-[11px] cursor-pointer hover:underline ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}>
-          {task.due ? formatSmartDate(task.due) : '—'}
-        </span>
-        <input
-          type="date"
-          value={task.due || ''}
-          onChange={e => onInlineUpdate(task, 'due', e.target.value)}
-          className="absolute inset-0 opacity-0 w-full cursor-pointer"
-        />
-      </div>
+      <input
+        type="date"
+        value={task.due || ''}
+        onChange={e => onInlineUpdate(task, 'due', e.target.value)}
+        className={`text-[11px] bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}
+      />
       <select
         value={task.priority || ''}
         onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
