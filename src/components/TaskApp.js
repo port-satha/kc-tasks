@@ -443,10 +443,111 @@ function formatSmartDate(dateStr) {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
+function DatePicker({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [viewDate, setViewDate] = useState(() => {
+    if (value) return new Date(value + 'T00:00:00')
+    return new Date()
+  })
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const year = viewDate.getFullYear()
+  const month = viewDate.getMonth()
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const selected = value ? new Date(value + 'T00:00:00') : null
+
+  // Build calendar grid
+  const firstDay = new Date(year, month, 1)
+  const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1 // Mon=0
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const weeks = []
+  let day = 1 - startDay
+  for (let w = 0; w < 6; w++) {
+    const week = []
+    for (let d = 0; d < 7; d++, day++) {
+      week.push(new Date(year, month, day))
+    }
+    weeks.push(week)
+    if (day > daysInMonth) break
+  }
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const dayNames = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+
+  const selectDate = (d) => {
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    onChange(iso)
+    setOpen(false)
+  }
+
+  const isOverdue = value && !open && selected && selected < today
+
+  return (
+    <div className="relative" ref={ref} onMouseDown={e => e.stopPropagation()} onDragStart={e => e.stopPropagation()} draggable={false}>
+      <button type="button" onClick={() => { setOpen(!open); if (value) setViewDate(new Date(value + 'T00:00:00')) }}
+        className={`text-[11px] border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer w-full text-left ${isOverdue ? 'text-red-600 font-medium' : value ? 'text-gray-600' : 'text-gray-400'}`}>
+        {value ? formatSmartDate(value) : '—'}
+      </button>
+      {open && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3">
+          {/* Quick picks */}
+          <div className="flex gap-1 mb-2">
+            {[
+              ['Today', 0], ['Tomorrow', 1],
+            ].map(([label, offset]) => {
+              const d = new Date(); d.setDate(d.getDate() + offset)
+              const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+              return <button key={label} onClick={() => { onChange(iso); setOpen(false) }}
+                className="text-[10px] px-2 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700">{label}</button>
+            })}
+            {value && <button onClick={() => { onChange(''); setOpen(false) }}
+              className="text-[10px] px-2 py-1 rounded-full border border-gray-200 text-red-500 hover:bg-red-50 ml-auto">Clear</button>}
+          </div>
+          {/* Month nav */}
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={() => setViewDate(new Date(year, month - 1, 1))} className="text-gray-400 hover:text-gray-700 text-sm px-1">&lt;</button>
+            <span className="text-xs font-semibold text-gray-800">{monthNames[month]} {year}</span>
+            <button onClick={() => setViewDate(new Date(year, month + 1, 1))} className="text-gray-400 hover:text-gray-700 text-sm px-1">&gt;</button>
+          </div>
+          {/* Day headers */}
+          <div className="grid grid-cols-7 gap-0 mb-1">
+            {dayNames.map((d, i) => <span key={i} className="text-[10px] text-gray-400 text-center font-medium">{d}</span>)}
+          </div>
+          {/* Calendar grid */}
+          {weeks.map((week, wi) => (
+            <div key={wi} className="grid grid-cols-7 gap-0">
+              {week.map((d, di) => {
+                const inMonth = d.getMonth() === month
+                const isToday = d.getTime() === today.getTime()
+                const isSel = selected && d.toDateString() === selected.toDateString()
+                return (
+                  <button key={di} onClick={() => selectDate(d)}
+                    className={`text-[11px] w-7 h-7 rounded-full flex items-center justify-center transition-colors
+                      ${!inMonth ? 'text-gray-300' : 'text-gray-700 hover:bg-indigo-50'}
+                      ${isToday ? 'font-bold ring-1 ring-indigo-400' : ''}
+                      ${isSel ? 'bg-indigo-600 text-white hover:bg-indigo-700' : ''}`}>
+                    {d.getDate()}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   const moveRef = useRef(null)
-  const dateRef = useRef(null)
   const overdue = isOverdue(task)
   const subtaskCount = task.subtasks ? task.subtasks.length : 0
   const subtaskDone = task.subtasks ? task.subtasks.filter(s => s.done).length : 0
@@ -495,14 +596,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <span onClick={() => onOpen(task)} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
-      <div className="relative h-7" {...stopDrag}>
-        <span className={`absolute inset-0 flex items-center text-[11px] px-1 ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}>
-          {task.due ? formatSmartDate(task.due) : '—'}
-        </span>
-        <input ref={dateRef} type="date" value={task.due || ''}
-          onChange={e => onInlineUpdate(task, 'due', e.target.value)}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-      </div>
+      <DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} />
       <select {...stopDrag}
         value={task.priority || ''}
         onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
