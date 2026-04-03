@@ -1,8 +1,8 @@
 'use client'
 import { useState, useCallback } from 'react'
-import { SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
-import { useSupabase, useUser, useTasks, useMembers } from '../lib/hooks'
-import { createTask, updateTask, deleteTask, updateSubtask } from '../lib/db'
+import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
+import { useSupabase, useUser, useTasks, useMembers, useSections } from '../lib/hooks'
+import { createTask, updateTask, deleteTask, updateSubtask, createSection, deleteSection } from '../lib/db'
 import TaskModal from './TaskModal'
 import AddTaskModal from './AddTaskModal'
 import AvatarChip from './AvatarChip'
@@ -12,6 +12,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const { user } = useUser()
   const { tasks, loading } = useTasks(projectId)
   const { members } = useMembers()
+  const { sections: customSections, reload: reloadSections } = useSections(projectId, user?.id)
   const [view, setView] = useState('list')
   const [activeTask, setActiveTask] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
@@ -21,9 +22,26 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const [filterAssignee, setFilterAssignee] = useState('all')
   const [filterStatus, setFilterStatus] = useState('active')
   const [searchQuery, setSearchQuery] = useState('')
+  const [showAddSection, setShowAddSection] = useState(false)
+  const [newSectionName, setNewSectionName] = useState('')
+
+  // Merge default sections with any custom ones
+  const allSections = [...new Set([...DEFAULT_SECTIONS, ...customSections])]
+  // Also include sections from existing tasks that might not be in the list
+  tasks.forEach(t => { if (t.section && !allSections.includes(t.section)) allSections.push(t.section) })
 
   const toggleSection = (sec) => setCollapsedSections(prev => ({ ...prev, [sec]: !prev[sec] }))
   const toggleTaskExpand = (taskId) => setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }))
+
+  const handleAddSection = async () => {
+    if (!newSectionName.trim()) return
+    try {
+      await createSection(supabase, { name: newSectionName.trim(), projectId, ownerId: user?.id })
+      setNewSectionName('')
+      setShowAddSection(false)
+      reloadSections()
+    } catch (err) { alert('Failed to add section: ' + err.message) }
+  }
 
   const handleToggleTaskDone = useCallback(async (task) => {
     try {
@@ -75,7 +93,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   })
 
   const grouped = {}
-  SECTIONS.forEach(s => { grouped[s] = [] })
+  allSections.forEach(s => { grouped[s] = [] })
   filtered.forEach(t => {
     const sec = t.section || 'Recently assigned'
     if (!grouped[sec]) grouped[sec] = []
@@ -162,16 +180,35 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       </div>
 
       {view === 'list' ? (
-        <ListView grouped={grouped} collapsedSections={collapsedSections} toggleSection={toggleSection}
-          expandedTasks={expandedTasks} toggleTaskExpand={toggleTaskExpand} toggleSubtask={handleToggleSubtask}
-          toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue}
-          members={members} onInlineUpdate={handleInlineUpdate} />
+        <>
+          <ListView grouped={grouped} collapsedSections={collapsedSections} toggleSection={toggleSection}
+            expandedTasks={expandedTasks} toggleTaskExpand={toggleTaskExpand} toggleSubtask={handleToggleSubtask}
+            toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue}
+            members={members} onInlineUpdate={handleInlineUpdate} />
+          <div className="px-4 pb-4">
+            {showAddSection ? (
+              <div className="flex items-center gap-2">
+                <input autoFocus value={newSectionName} onChange={e => setNewSectionName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddSection()}
+                  placeholder="Section name..."
+                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 w-56 text-gray-800 placeholder-gray-400" />
+                <button onClick={handleAddSection} className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Add</button>
+                <button onClick={() => { setShowAddSection(false); setNewSectionName('') }} className="text-xs px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowAddSection(true)}
+                className="text-xs text-gray-400 hover:text-indigo-600 flex items-center gap-1 py-2">
+                <span>+</span> Add section
+              </button>
+            )}
+          </div>
+        </>
       ) : (
         <BoardView columns={boardColumns} onOpen={setActiveTask} isOverdue={isOverdue} />
       )}
 
-      {activeTask && <TaskModal task={activeTask} members={members} onClose={() => setActiveTask(null)} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />}
-      {showAdd && <AddTaskModal members={members} onClose={() => setShowAdd(false)} onAdd={handleAddTask} />}
+      {activeTask && <TaskModal task={activeTask} members={members} sections={allSections} onClose={() => setActiveTask(null)} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />}
+      {showAdd && <AddTaskModal members={members} sections={allSections} onClose={() => setShowAdd(false)} onAdd={handleAddTask} />}
     </div>
   )
 }

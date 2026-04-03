@@ -26,17 +26,28 @@ export async function fetchTasks(supabase, { projectId = null } = {}) {
 }
 
 export async function createTask(supabase, taskData) {
+  // Clean empty strings to null for date/enum fields
+  const cleaned = { ...taskData }
+  const nullIfEmpty = ['due', 'priority', 'value', 'effort', 'progress', 'assigned_to']
+  nullIfEmpty.forEach(f => { if (cleaned[f] === '') cleaned[f] = null })
+
   const { data, error } = await supabase
     .from('tasks')
-    .insert(taskData)
+    .insert(cleaned)
     .select('*, subtasks(*)')
     .single()
   if (error) throw error
+
+  // If assigned to someone in a project task, also create a personal reference
+  // The assignee will see the task in their project view
   return data
 }
 
 export async function updateTask(supabase, taskId, updates, { previousAssignedTo = null } = {}) {
   const { assigned_member, subtasks, ...cleanUpdates } = updates
+  // Clean empty strings to null for date/enum fields
+  const nullIfEmpty = ['due', 'priority', 'value', 'effort', 'progress', 'assigned_to']
+  nullIfEmpty.forEach(f => { if (f in cleanUpdates && cleanUpdates[f] === '') cleanUpdates[f] = null })
   const { data, error } = await supabase
     .from('tasks')
     .update(cleanUpdates)
@@ -233,6 +244,45 @@ export async function updateMember(supabase, memberId, updates) {
 export async function deleteMember(supabase, memberId) {
   const { error } = await supabase.from('members').delete().eq('id', memberId)
   if (error) throw error
+}
+
+// ===== SECTIONS =====
+export async function fetchSections(supabase, { projectId = null, ownerId = null } = {}) {
+  let query = supabase.from('sections').select('*').order('sort_order', { ascending: true })
+  if (projectId) {
+    query = query.eq('project_id', projectId)
+  } else if (ownerId) {
+    query = query.eq('owner_id', ownerId).is('project_id', null)
+  }
+  const { data, error } = await query
+  if (error) throw error
+  return data || []
+}
+
+export async function createSection(supabase, { name, projectId = null, ownerId = null }) {
+  const { data, error } = await supabase
+    .from('sections')
+    .insert({ name, project_id: projectId, owner_id: ownerId })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteSection(supabase, sectionId) {
+  const { error } = await supabase.from('sections').delete().eq('id', sectionId)
+  if (error) throw error
+}
+
+export async function renameSection(supabase, sectionId, name) {
+  const { data, error } = await supabase
+    .from('sections')
+    .update({ name })
+    .eq('id', sectionId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
 }
 
 // ===== PROJECT MEMBERS =====
