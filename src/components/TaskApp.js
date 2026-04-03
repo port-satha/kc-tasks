@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
 import { useSupabase, useUser, useTasks, useMembers, useSections } from '../lib/hooks'
 import { createTask, updateTask, deleteTask, updateSubtask, createSection, deleteSection } from '../lib/db'
@@ -16,7 +16,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const [view, setView] = useState('list')
   const [activeTask, setActiveTask] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
-  const [collapsedSections, setCollapsedSections] = useState({})
+  const [collapsedSections, setCollapsedSections] = useState({ '__done__': true })
   const [expandedTasks, setExpandedTasks] = useState({})
   const [filterPriority, setFilterPriority] = useState('all')
   const [filterAssignee, setFilterAssignee] = useState('all')
@@ -24,10 +24,12 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddSection, setShowAddSection] = useState(false)
   const [newSectionName, setNewSectionName] = useState('')
+  const [undoToast, setUndoToast] = useState(null)
+  const undoTimerRef = useRef(null)
+  const [draggedTaskId, setDraggedTaskId] = useState(null)
 
   // Merge default sections with any custom ones
   const allSections = [...new Set([...DEFAULT_SECTIONS, ...customSections])]
-  // Also include sections from existing tasks that might not be in the list
   tasks.forEach(t => { if (t.section && !allSections.includes(t.section)) allSections.push(t.section) })
 
   const toggleSection = (sec) => setCollapsedSections(prev => ({ ...prev, [sec]: !prev[sec] }))
@@ -43,12 +45,39 @@ export default function TaskApp({ projectId = null, projectName = null, settings
     } catch (err) { alert('Failed to add section: ' + err.message) }
   }
 
+  // Undo logic
+  const clearUndo = useCallback(() => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    setUndoToast(null)
+  }, [])
+
   const handleToggleTaskDone = useCallback(async (task) => {
     try {
-      const newProgress = task.progress === 'Done' ? '' : 'Done'
+      const wasDone = task.progress === 'Done'
+      const newProgress = wasDone ? '' : 'Done'
       await updateTask(supabase, task.id, { progress: newProgress })
+
+      // Show undo toast only when marking as Done
+      if (!wasDone) {
+        clearUndo()
+        setUndoToast({ taskId: task.id, title: task.title })
+        undoTimerRef.current = setTimeout(() => setUndoToast(null), 3000)
+      }
     } catch (err) { console.error('Failed to toggle task:', err) }
-  }, [supabase])
+  }, [supabase, clearUndo])
+
+  const handleUndo = useCallback(async () => {
+    if (!undoToast) return
+    try {
+      await updateTask(supabase, undoToast.taskId, { progress: '' })
+    } catch (err) { console.error('Failed to undo:', err) }
+    clearUndo()
+  }, [supabase, undoToast, clearUndo])
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => { if (undoTimerRef.current) clearTimeout(undoTimerRef.current) }
+  }, [])
 
   const handleToggleSubtask = useCallback(async (taskId, subtaskId, currentDone) => {
     try { await updateSubtask(supabase, subtaskId, { done: !currentDone }) }
@@ -83,18 +112,33 @@ export default function TaskApp({ projectId = null, projectName = null, settings
     } catch (err) { console.error('Failed to update task:', err) }
   }, [supabase])
 
-  const filtered = tasks.filter(t => {
-    if (filterStatus === 'active' && t.progress === 'Done') return false
-    if (filterStatus === 'done' && t.progress !== 'Done') return false
+  // Drag & drop: move task to a different section
+  const handleDropOnSection = useCallback(async (section) => {
+    if (!draggedTaskId) return
+    try {
+      await updateTask(supabase, draggedTaskId, { section })
+    } catch (err) { console.error('Failed to move task:', err) }
+    setDraggedTaskId(null)
+  }, [supabase, draggedTaskId])
+
+  // Separate done tasks from active tasks
+  const activeTasks = tasks.filter(t => t.progress !== 'Done')
+  const doneTasks = tasks.filter(t => t.progress === 'Done')
+
+  const filtered = (filterStatus === 'done' ? doneTasks : filterStatus === 'active' ? activeTasks : tasks).filter(t => {
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false
     if (filterAssignee !== 'all' && t.assigned_to !== filterAssignee) return false
     if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
     return true
   })
 
+  // Group non-done tasks into sections
+  const filteredActive = filtered.filter(t => t.progress !== 'Done')
+  const filteredDone = filtered.filter(t => t.progress === 'Done')
+
   const grouped = {}
   allSections.forEach(s => { grouped[s] = [] })
-  filtered.forEach(t => {
+  filteredActive.forEach(t => {
     const sec = t.section || 'Recently assigned'
     if (!grouped[sec]) grouped[sec] = []
     grouped[sec].push(t)
@@ -184,7 +228,34 @@ export default function TaskApp({ projectId = null, projectName = null, settings
           <ListView grouped={grouped} collapsedSections={collapsedSections} toggleSection={toggleSection}
             expandedTasks={expandedTasks} toggleTaskExpand={toggleTaskExpand} toggleSubtask={handleToggleSubtask}
             toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue}
-            members={members} onInlineUpdate={handleInlineUpdate} />
+            members={members} onInlineUpdate={handleInlineUpdate}
+            draggedTaskId={draggedTaskId} setDraggedTaskId={setDraggedTaskId} onDropOnSection={handleDropOnSection}
+            allSections={allSections} onMoveToSection={(taskId, section) => updateTask(supabase, taskId, { section })} />
+
+          {/* Done section — collapsed by default */}
+          {filteredDone.length > 0 && (
+            <div className="px-4 pb-2">
+              <button onClick={() => toggleSection('__done__')}
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors">
+                <span className={`text-gray-400 text-xs transition-transform ${collapsedSections['__done__'] ? '' : 'rotate-90'}`}>▶</span>
+                <span className="text-sm font-semibold text-green-700">Done</span>
+                <span className="text-xs bg-green-100 text-green-600 rounded-full px-2 py-0.5">{filteredDone.length}</span>
+              </button>
+              {!collapsedSections['__done__'] && (
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2 opacity-70">
+                  {filteredDone.map(t => (
+                    <div key={t.id}>
+                      <TaskRow task={t} onOpen={setActiveTask} isOverdue={isOverdue} onToggleDone={handleToggleTaskDone}
+                        hasSubtasks={t.subtasks && t.subtasks.length > 0}
+                        isExpanded={expandedTasks[t.id]} onToggleExpand={() => toggleTaskExpand(t.id)}
+                        members={members} onInlineUpdate={handleInlineUpdate} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="px-4 pb-4">
             {showAddSection ? (
               <div className="flex items-center gap-2">
@@ -207,23 +278,41 @@ export default function TaskApp({ projectId = null, projectName = null, settings
         <BoardView columns={boardColumns} onOpen={setActiveTask} isOverdue={isOverdue} />
       )}
 
+      {/* Undo toast */}
+      {undoToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+          <div className="bg-gray-900 text-white rounded-xl px-4 py-3 shadow-xl flex items-center gap-3 text-sm">
+            <span className="text-green-400">✓</span>
+            <span className="truncate max-w-[200px]">&quot;{undoToast.title}&quot; done</span>
+            <button onClick={handleUndo}
+              className="text-indigo-300 hover:text-white font-medium ml-2 flex-shrink-0">
+              Undo
+            </button>
+          </div>
+        </div>
+      )}
+
       {activeTask && <TaskModal task={activeTask} members={members} sections={allSections} onClose={() => setActiveTask(null)} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />}
       {showAdd && <AddTaskModal members={members} sections={allSections} onClose={() => setShowAdd(false)} onAdd={handleAddTask} />}
     </div>
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate }) {
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, allSections, onMoveToSection }) {
   return (
     <div className="p-4 flex-1">
       <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1">
         <span>Name</span><span>Due date</span><span>Priority</span><span>Value</span><span>Effort level</span><span>Task Progress</span><span>Assignee</span>
       </div>
       {Object.entries(grouped).map(([section, tasks]) => {
-        if (tasks.length === 0) return null
+        if (tasks.length === 0 && !draggedTaskId) return null
         const collapsed = collapsedSections[section]
+        const isDragOver = draggedTaskId !== null
         return (
-          <div key={section} className="mb-1">
+          <div key={section} className="mb-1"
+            onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-indigo-300', 'rounded-lg') }}
+            onDragLeave={e => { e.currentTarget.classList.remove('ring-2', 'ring-indigo-300', 'rounded-lg') }}
+            onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('ring-2', 'ring-indigo-300', 'rounded-lg'); onDropOnSection(section) }}>
             <button onClick={() => toggleSection(section)}
               className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors">
               <span className={`text-gray-400 text-xs transition-transform ${collapsed ? '' : 'rotate-90'}`}>▶</span>
@@ -232,12 +321,22 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
             </button>
             {!collapsed && (
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2">
+                {tasks.length === 0 && draggedTaskId && (
+                  <div className="px-4 py-3 text-xs text-gray-400 text-center border-dashed border-2 border-gray-200 m-1 rounded-lg">
+                    Drop here to move to &quot;{section}&quot;
+                  </div>
+                )}
                 {tasks.map(t => (
-                  <div key={t.id}>
+                  <div key={t.id}
+                    draggable
+                    onDragStart={() => setDraggedTaskId(t.id)}
+                    onDragEnd={() => setDraggedTaskId(null)}>
                     <TaskRow task={t} onOpen={onOpen} isOverdue={isOverdue} onToggleDone={toggleTaskDone}
                       hasSubtasks={t.subtasks && t.subtasks.length > 0}
                       isExpanded={expandedTasks[t.id]} onToggleExpand={() => toggleTaskExpand(t.id)}
-                      members={members} onInlineUpdate={onInlineUpdate} />
+                      members={members} onInlineUpdate={onInlineUpdate}
+                      isDragging={draggedTaskId === t.id}
+                      allSections={allSections} currentSection={section} onMoveToSection={onMoveToSection} />
                     {expandedTasks[t.id] && t.subtasks && t.subtasks.length > 0 && (
                       <div className="bg-gray-50 border-t border-gray-100">
                         {t.subtasks.map(st => (
@@ -262,16 +361,42 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
   )
 }
 
-function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate }) {
+function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection }) {
+  const [showMoveMenu, setShowMoveMenu] = useState(false)
+  const moveRef = useRef(null)
   const overdue = isOverdue(task)
   const subtaskCount = task.subtasks ? task.subtasks.length : 0
   const subtaskDone = task.subtasks ? task.subtasks.filter(s => s.done).length : 0
 
+  useEffect(() => {
+    if (!showMoveMenu) return
+    const handler = (e) => { if (moveRef.current && !moveRef.current.contains(e.target)) setShowMoveMenu(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showMoveMenu])
+
+  const otherSections = (allSections || []).filter(s => s !== currentSection)
+
   const selectClass = "text-[11px] bg-transparent border border-transparent hover:border-gray-200 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full appearance-none"
 
   return (
-    <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center">
+    <div className={`grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''}`}>
       <div className="flex items-center gap-2 min-w-0">
+        <div className="relative flex-shrink-0" ref={moveRef}>
+          <span className="cursor-grab text-gray-300 hover:text-gray-500 text-xs select-none" title="Drag to move"
+            onClick={(e) => { e.stopPropagation(); if (otherSections.length > 0) setShowMoveMenu(!showMoveMenu) }}>⠿</span>
+          {showMoveMenu && otherSections.length > 0 && (
+            <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 max-h-48 overflow-y-auto">
+              <p className="text-[10px] text-gray-400 px-3 py-1 uppercase tracking-wider">Move to section</p>
+              {otherSections.map(s => (
+                <button key={s} onClick={(e) => { e.stopPropagation(); onMoveToSection(task.id, s); setShowMoveMenu(false) }}
+                  className="w-full text-left text-xs px-3 py-1.5 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 transition-colors">
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {hasSubtasks ? (
           <button onClick={(e) => { e.stopPropagation(); onToggleExpand() }} className="text-gray-400 hover:text-gray-600 text-xs flex-shrink-0 w-4">
             {isExpanded ? '▾' : '▸'}
