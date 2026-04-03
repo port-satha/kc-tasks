@@ -352,7 +352,7 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
 
   return (
     <div className="p-4 flex-1">
-      <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1">
+      <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1 bg-gray-50 sticky top-12 z-[5]">
         <span>Name</span><span>Due date</span><span>Priority</span><span>Value</span><span>Effort level</span><span>Task Progress</span><span>Assignee</span>
       </div>
       {Object.entries(grouped).map(([section, sectionTasks]) => {
@@ -461,6 +461,9 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
 
   const selectClass = "text-[11px] bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full"
 
+  // Prevent draggable parent from stealing clicks on form elements
+  const stopDrag = { onMouseDown: e => e.stopPropagation(), onDragStart: e => e.stopPropagation(), draggable: false }
+
   return (
     <div className={`grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''}`}>
       <div className="flex items-center gap-2 min-w-0">
@@ -495,9 +498,12 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         type="date"
         value={task.due || ''}
         onChange={e => onInlineUpdate(task, 'due', e.target.value)}
+        onMouseDown={e => e.stopPropagation()}
+        onDragStart={e => e.stopPropagation()}
+        draggable={false}
         className={`text-[11px] bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}
       />
-      <select
+      <select {...stopDrag}
         value={task.priority || ''}
         onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
         className={`${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
@@ -505,7 +511,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <option value="">—</option>
         {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
       </select>
-      <select
+      <select {...stopDrag}
         value={task.value || ''}
         onChange={e => onInlineUpdate(task, 'value', e.target.value)}
         className={`${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
@@ -513,7 +519,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <option value="">—</option>
         {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
       </select>
-      <select
+      <select {...stopDrag}
         value={task.effort || ''}
         onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
         className={`${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
@@ -521,7 +527,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <option value="">—</option>
         {EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
       </select>
-      <select
+      <select {...stopDrag}
         value={task.progress || ''}
         onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
         className={`${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
@@ -529,7 +535,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <option value="">—</option>
         {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
       </select>
-      <select
+      <select {...stopDrag}
         value={task.assigned_to || ''}
         onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
         className={`${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
