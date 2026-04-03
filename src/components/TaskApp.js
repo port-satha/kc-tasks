@@ -27,6 +27,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const [undoToast, setUndoToast] = useState(null)
   const undoTimerRef = useRef(null)
   const [draggedTaskId, setDraggedTaskId] = useState(null)
+  const [dropTargetId, setDropTargetId] = useState(null) // task id to drop before
 
   // Merge default sections with any custom ones
   const allSections = [...new Set([...DEFAULT_SECTIONS, ...customSections])]
@@ -124,7 +125,42 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       await updateTask(supabase, draggedTaskId, { section })
     } catch (err) { console.error('Failed to move task:', err) }
     setDraggedTaskId(null)
+    setDropTargetId(null)
   }, [supabase, draggedTaskId])
+
+  // Drag & drop: reorder within same section
+  const handleReorderTask = useCallback(async (section, targetTaskId) => {
+    if (!draggedTaskId || draggedTaskId === targetTaskId) {
+      setDraggedTaskId(null)
+      setDropTargetId(null)
+      return
+    }
+    // Get tasks in this section in current order
+    const sectionTasks = tasks
+      .filter(t => (t.section || 'Recently assigned') === section && t.progress !== 'Done')
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+
+    // Remove dragged task and insert before target
+    const reordered = sectionTasks.filter(t => t.id !== draggedTaskId)
+    const draggedTask = sectionTasks.find(t => t.id === draggedTaskId)
+    if (!draggedTask) { setDraggedTaskId(null); setDropTargetId(null); return }
+
+    const targetIndex = targetTaskId === '__end__'
+      ? reordered.length
+      : reordered.findIndex(t => t.id === targetTaskId)
+    if (targetIndex === -1) { setDraggedTaskId(null); setDropTargetId(null); return }
+
+    reordered.splice(targetIndex, 0, draggedTask)
+
+    // Update sort_order for all reordered tasks, also ensure same section
+    try {
+      await Promise.all(reordered.map((t, i) =>
+        updateTask(supabase, t.id, { sort_order: i, section })
+      ))
+    } catch (err) { console.error('Failed to reorder:', err) }
+    setDraggedTaskId(null)
+    setDropTargetId(null)
+  }, [supabase, draggedTaskId, tasks])
 
   // Separate done tasks from active tasks
   const activeTasks = tasks.filter(t => t.progress !== 'Done')
@@ -235,6 +271,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue}
             members={members} onInlineUpdate={handleInlineUpdate}
             draggedTaskId={draggedTaskId} setDraggedTaskId={setDraggedTaskId} onDropOnSection={handleDropOnSection}
+            dropTargetId={dropTargetId} setDropTargetId={setDropTargetId} onReorderTask={handleReorderTask}
             allSections={allSections} onMoveToSection={(taskId, section) => updateTask(supabase, taskId, { section })} />
 
           {/* Done section — collapsed by default */}
@@ -303,39 +340,54 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, allSections, onMoveToSection }) {
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection }) {
+
+  const handleDragOverTask = (e, taskId) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (draggedTaskId && draggedTaskId !== taskId) {
+      setDropTargetId(taskId)
+    }
+  }
+
   return (
     <div className="p-4 flex-1">
       <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1">
         <span>Name</span><span>Due date</span><span>Priority</span><span>Value</span><span>Effort level</span><span>Task Progress</span><span>Assignee</span>
       </div>
-      {Object.entries(grouped).map(([section, tasks]) => {
-        if (tasks.length === 0 && !draggedTaskId) return null
+      {Object.entries(grouped).map(([section, sectionTasks]) => {
+        if (sectionTasks.length === 0 && !draggedTaskId) return null
         const collapsed = collapsedSections[section]
-        const isDragOver = draggedTaskId !== null
         return (
           <div key={section} className="mb-1"
-            onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('ring-2', 'ring-indigo-300', 'rounded-lg') }}
-            onDragLeave={e => { e.currentTarget.classList.remove('ring-2', 'ring-indigo-300', 'rounded-lg') }}
-            onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('ring-2', 'ring-indigo-300', 'rounded-lg'); onDropOnSection(section) }}>
+            onDragOver={e => { e.preventDefault() }}
+            onDrop={e => { e.preventDefault(); onDropOnSection(section) }}>
             <button onClick={() => toggleSection(section)}
               className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors">
               <span className={`text-gray-400 text-xs transition-transform ${collapsed ? '' : 'rotate-90'}`}>▶</span>
               <span className="text-sm font-semibold text-gray-900">{section}</span>
-              <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{tasks.length}</span>
+              <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{sectionTasks.length}</span>
             </button>
             {!collapsed && (
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2">
-                {tasks.length === 0 && draggedTaskId && (
-                  <div className="px-4 py-3 text-xs text-gray-400 text-center border-dashed border-2 border-gray-200 m-1 rounded-lg">
+                {sectionTasks.length === 0 && draggedTaskId && (
+                  <div className="px-4 py-3 text-xs text-gray-400 text-center border-dashed border-2 border-gray-200 m-1 rounded-lg"
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); e.stopPropagation(); onDropOnSection(section) }}>
                     Drop here to move to &quot;{section}&quot;
                   </div>
                 )}
-                {tasks.map(t => (
+                {sectionTasks.map((t, idx) => (
                   <div key={t.id}
                     draggable
                     onDragStart={() => setDraggedTaskId(t.id)}
-                    onDragEnd={() => setDraggedTaskId(null)}>
+                    onDragEnd={() => { setDraggedTaskId(null); setDropTargetId(null) }}
+                    onDragOver={e => handleDragOverTask(e, t.id)}
+                    onDrop={e => { e.preventDefault(); e.stopPropagation(); onReorderTask(section, t.id) }}>
+                    {/* Drop indicator line */}
+                    {dropTargetId === t.id && draggedTaskId !== t.id && (
+                      <div className="h-0.5 bg-indigo-500 mx-4 rounded-full" />
+                    )}
                     <TaskRow task={t} onOpen={onOpen} isOverdue={isOverdue} onToggleDone={toggleTaskDone}
                       hasSubtasks={t.subtasks && t.subtasks.length > 0}
                       isExpanded={expandedTasks[t.id]} onToggleExpand={() => toggleTaskExpand(t.id)}
@@ -357,6 +409,14 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
                     )}
                   </div>
                 ))}
+                {/* Drop zone at end of section */}
+                {draggedTaskId && sectionTasks.length > 0 && (
+                  <div className="h-6"
+                    onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDropTargetId('__end__') }}
+                    onDrop={e => { e.preventDefault(); e.stopPropagation(); onReorderTask(section, '__end__') }}>
+                    {dropTargetId === '__end__' && <div className="h-0.5 bg-indigo-500 mx-4 rounded-full mt-3" />}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -399,7 +459,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
 
   const otherSections = (allSections || []).filter(s => s !== currentSection)
 
-  const selectClass = "text-[11px] bg-transparent border border-transparent hover:border-gray-200 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full appearance-none"
+  const selectClass = "text-[11px] bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full"
 
   return (
     <div className={`grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''}`}>
