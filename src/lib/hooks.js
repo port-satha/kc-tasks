@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from './supabase/client'
-import { fetchTasks, fetchProjects, fetchMembers, ensureCurrentUserIsMember } from './db'
+import { fetchTasks, fetchProjects, fetchMembers, ensureCurrentUserIsMember, fetchSections } from './db'
 import { fetchNotifications, getUnreadCount } from './notifications'
 import { fetchComments } from './comments'
 
@@ -158,6 +158,27 @@ export function useNotifications(userId) {
   }, [supabase, userId, load])
 
   return { notifications, unreadCount, loading, reload: load }
+}
+
+export function useSections(projectId = null, ownerId = null) {
+  const supabase = useSupabase()
+  const [sections, setSections] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    try {
+      const data = await fetchSections(supabase, { projectId, ownerId })
+      setSections(data.map(s => s.name))
+    } catch (err) {
+      console.error('Failed to load sections:', err)
+      setSections([])
+    }
+    setLoading(false)
+  }, [supabase, projectId, ownerId])
+
+  useEffect(() => { load() }, [load])
+
+  return { sections, loading, reload: load }
 }
 
 export function useComments(taskId) {

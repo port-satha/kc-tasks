@@ -1,12 +1,13 @@
 'use client'
 import { useState } from 'react'
-import { SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS } from '../lib/data'
+import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, RECURRENCE_TYPES, WEEKDAYS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS } from '../lib/data'
 import { useSupabase, useUser } from '../lib/hooks'
 import { createSubtask, updateSubtask, deleteSubtask } from '../lib/db'
 import MemberPicker from './MemberPicker'
 import TaskComments from './TaskComments'
 
-export default function TaskModal({ task, members, onClose, onUpdate, onDelete }) {
+export default function TaskModal({ task, members, sections: customSections, onClose, onUpdate, onDelete }) {
+  const sectionList = customSections && customSections.length > 0 ? customSections : DEFAULT_SECTIONS
   const supabase = useSupabase()
   const { user } = useUser()
   const currentMember = members?.find(m => m.profile_id === user?.id)
@@ -83,7 +84,7 @@ export default function TaskModal({ task, members, onClose, onUpdate, onDelete }
           <label className="text-xs text-gray-500 font-medium block mb-1">Section</label>
           <select value={section} onChange={e => { setSection(e.target.value); saveField('section', e.target.value) }}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3 bg-white text-gray-800">
-            {SECTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            {sectionList.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
           <div className="grid grid-cols-2 gap-3 mb-3">
@@ -125,8 +126,25 @@ export default function TaskModal({ task, members, onClose, onUpdate, onDelete }
           </div>
 
           <label className="text-xs text-gray-500 font-medium block mb-1">Due date</label>
-          <input type="date" value={due} onChange={e => { setDue(e.target.value); saveField('due', e.target.value) }}
+          <input type="date" value={due} onChange={e => { setDue(e.target.value); saveField('due', e.target.value || null) }}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3 bg-white text-gray-800" />
+
+          {/* Recurrence info */}
+          {task.recurrence_rule && (
+            <div className="mb-3 bg-indigo-50 rounded-lg px-3 py-2 border border-indigo-100">
+              <p className="text-xs text-indigo-700 font-medium flex items-center gap-1">
+                <span>🔁</span> Repeats {task.recurrence_rule.type}
+                {task.recurrence_rule.interval > 1 && ` every ${task.recurrence_rule.interval} ${task.recurrence_rule.type === 'daily' ? 'days' : task.recurrence_rule.type === 'weekly' ? 'weeks' : task.recurrence_rule.type === 'monthly' ? 'months' : 'years'}`}
+                {task.recurrence_rule.type === 'weekly' && task.recurrence_rule.days?.length > 0 && ` on ${task.recurrence_rule.days.map(d => WEEKDAYS[d]).join(', ')}`}
+                {task.recurrence_rule.type === 'monthly' && task.recurrence_rule.dayOfMonth && ` on day ${task.recurrence_rule.dayOfMonth}`}
+              </p>
+              {task.recurrence_rule.endDate && (
+                <p className="text-[10px] text-indigo-500 mt-0.5">Until {new Date(task.recurrence_rule.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+              )}
+              <button onClick={() => saveField('recurrence_rule', null)}
+                className="text-[10px] text-indigo-500 hover:text-red-600 mt-1">Remove repeat</button>
+            </div>
+          )}
 
           {/* Subtasks */}
           <div className="mb-3">

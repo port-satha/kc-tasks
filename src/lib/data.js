@@ -1,6 +1,6 @@
-export const SECTIONS = [
-  '2025 Big Rocks',
+export const DEFAULT_SECTIONS = [
   'Recently assigned',
+  '2025 Big Rocks',
   'Most Important Lists',
   'Past Deadline',
   'Monday',
@@ -14,6 +14,18 @@ export const SECTIONS = [
   'Books note',
   'Do later',
 ]
+
+// SECTIONS is kept for backward compat — components now use useSections() hook
+export const SECTIONS = DEFAULT_SECTIONS
+
+export const RECURRENCE_TYPES = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+]
+
+export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export const PRIORITIES = ['High', 'Medium', 'Low']
 export const VALUES = ['High', 'Medium', 'Low']

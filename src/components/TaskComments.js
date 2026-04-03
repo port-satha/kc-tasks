@@ -13,20 +13,21 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
   const [editBody, setEditBody] = useState('')
   const [showMentions, setShowMentions] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
-  const [mentionTarget, setMentionTarget] = useState('new') // 'new' or 'edit'
+  const [mentionTarget, setMentionTarget] = useState('new')
+  const [attachments, setAttachments] = useState([])
+  const [uploading, setUploading] = useState(false)
   const textareaRef = useRef(null)
   const editTextareaRef = useRef(null)
   const mentionRef = useRef(null)
   const commentsEndRef = useRef(null)
+  const fileInputRef = useRef(null)
 
-  // Scroll to bottom when new comments arrive
   useEffect(() => {
     if (commentsEndRef.current) {
       commentsEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [comments.length])
 
-  // Close mention dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
       if (mentionRef.current && !mentionRef.current.contains(e.target)) {
@@ -37,7 +38,6 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Parse @mentions from text and return array of member IDs
   const parseMentions = useCallback((text) => {
     const mentionedIds = []
     const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g
@@ -48,7 +48,6 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
     return mentionedIds
   }, [])
 
-  // Convert stored format @[Name](id) to display format
   const renderCommentBody = useCallback((text) => {
     const parts = []
     const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g
@@ -56,11 +55,9 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
     let match
 
     while ((match = mentionRegex.exec(text)) !== null) {
-      // Text before mention
       if (match.index > lastIndex) {
         parts.push(text.slice(lastIndex, match.index))
       }
-      // Mention tag
       parts.push(
         <span key={match.index} className="bg-indigo-100 text-indigo-700 rounded px-1 py-0.5 text-xs font-medium">
           @{match[1]}
@@ -68,7 +65,6 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
       )
       lastIndex = match.index + match[0].length
     }
-    // Remaining text
     if (lastIndex < text.length) {
       parts.push(text.slice(lastIndex))
     }
@@ -77,13 +73,9 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
 
   const handleInput = (e, target) => {
     const val = e.target.value
-    if (target === 'new') {
-      setBody(val)
-    } else {
-      setEditBody(val)
-    }
+    if (target === 'new') setBody(val)
+    else setEditBody(val)
 
-    // Detect @ trigger
     const cursorPos = e.target.selectionStart
     const textBeforeCursor = val.slice(0, cursorPos)
     const atMatch = textBeforeCursor.match(/@(\w*)$/)
@@ -111,15 +103,10 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
     const mentionTag = `@[${member.name}](${member.id})`
     const newVal = textBeforeCursor.slice(0, atIndex) + mentionTag + ' ' + textAfterCursor
 
-    if (target === 'new') {
-      setBody(newVal)
-    } else {
-      setEditBody(newVal)
-    }
+    if (target === 'new') setBody(newVal)
+    else setEditBody(newVal)
 
     setShowMentions(false)
-
-    // Refocus textarea
     setTimeout(() => {
       const newCursorPos = atIndex + mentionTag.length + 1
       textarea.focus()
@@ -127,18 +114,66 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
     }, 0)
   }
 
+  // File upload handler
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    setUploading(true)
+
+    const newAttachments = []
+    for (const file of files) {
+      try {
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`
+        const filePath = `comments/${taskId}/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(filePath, file)
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError)
+          continue
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('attachments')
+          .getPublicUrl(filePath)
+
+        newAttachments.push({
+          name: file.name,
+          url: publicUrl,
+          type: file.type,
+          size: file.size
+        })
+      } catch (err) {
+        console.error('Failed to upload file:', err)
+      }
+    }
+
+    setAttachments(prev => [...prev, ...newAttachments])
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const removeAttachment = (index) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index))
+  }
+
   const handleSend = async () => {
-    if (!body.trim() || !currentMemberId) return
+    if ((!body.trim() && attachments.length === 0) || !currentMemberId) return
     setSending(true)
     try {
       const mentions = parseMentions(body)
       await createComment(supabase, {
         task_id: taskId,
         author_id: currentMemberId,
-        body: body.trim(),
-        mentions
+        body: body.trim() || (attachments.length > 0 ? `Attached ${attachments.length} file(s)` : ''),
+        mentions,
+        attachments: attachments.length > 0 ? attachments : undefined
       })
       setBody('')
+      setAttachments([])
     } catch (err) {
       console.error('Failed to send comment:', err)
     }
@@ -177,11 +212,6 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
     m.name.toLowerCase().includes(mentionQuery)
   )
 
-  const getDisplayBody = (text) => {
-    // For editing, convert @[Name](id) back to @Name for simpler editing display
-    return text
-  }
-
   const timeAgo = (dateStr) => {
     const now = new Date()
     const date = new Date(dateStr)
@@ -196,13 +226,41 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
     return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
   }
 
+  const isImage = (type) => type && type.startsWith('image/')
+  const formatSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1048576).toFixed(1)} MB`
+  }
+
+  const renderAttachments = (atts) => {
+    if (!atts || atts.length === 0) return null
+    return (
+      <div className="flex flex-wrap gap-1.5 mt-1.5">
+        {atts.map((att, i) => (
+          isImage(att.type) ? (
+            <a key={i} href={att.url} target="_blank" rel="noreferrer" className="block">
+              <img src={att.url} alt={att.name} className="max-w-[180px] max-h-[120px] rounded-lg border border-gray-200 object-cover hover:opacity-90" />
+            </a>
+          ) : (
+            <a key={i} href={att.url} target="_blank" rel="noreferrer"
+              className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2.5 py-1.5 hover:bg-gray-200 transition-colors">
+              <span className="text-gray-500 text-xs">📎</span>
+              <span className="text-xs text-gray-700 truncate max-w-[120px]">{att.name}</span>
+              <span className="text-[10px] text-gray-400">{formatSize(att.size)}</span>
+            </a>
+          )
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="mt-1">
       <label className="text-xs text-gray-500 font-medium block mb-2">
         Comments {comments.length > 0 && <span className="text-gray-400">({comments.length})</span>}
       </label>
 
-      {/* Comment list */}
       {loading ? (
         <p className="text-xs text-gray-400 italic mb-2">Loading comments...</p>
       ) : comments.length === 0 ? (
@@ -263,9 +321,12 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap mt-0.5">
-                        {renderCommentBody(c.body)}
-                      </p>
+                      <>
+                        <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap mt-0.5">
+                          {renderCommentBody(c.body)}
+                        </p>
+                        {renderAttachments(c.attachments)}
+                      </>
                     )}
                   </div>
                 </div>
@@ -285,15 +346,38 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
               value={body}
               onChange={e => handleInput(e, 'new')}
               onKeyDown={handleKeyDown}
-              placeholder={`Comment or tag someone with @...`}
+              placeholder="Comment or tag someone with @..."
               rows={2}
               className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 resize-none text-gray-800 placeholder-gray-400 focus:outline-none focus:border-indigo-300"
             />
+            {/* Attachment previews */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-2 pb-2">
+                {attachments.map((att, i) => (
+                  <div key={i} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-1">
+                    {isImage(att.type) ? (
+                      <img src={att.url} alt="" className="w-8 h-8 rounded object-cover" />
+                    ) : (
+                      <span className="text-gray-500 text-xs">📎</span>
+                    )}
+                    <span className="text-[10px] text-gray-600 truncate max-w-[80px]">{att.name}</span>
+                    <button onClick={() => removeAttachment(i)} className="text-gray-400 hover:text-red-500 text-xs ml-0.5">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <button onClick={handleSend} disabled={sending || !body.trim()}
-            className="text-xs px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 self-end">
-            {sending ? '...' : 'Send'}
-          </button>
+          <div className="flex flex-col gap-1 self-end">
+            <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" />
+            <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+              className="text-xs px-2 py-2 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 disabled:opacity-50" title="Attach file">
+              {uploading ? '...' : '📎'}
+            </button>
+            <button onClick={handleSend} disabled={sending || (!body.trim() && attachments.length === 0)}
+              className="text-xs px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0">
+              {sending ? '...' : 'Send'}
+            </button>
+          </div>
         </div>
 
         {/* @mention dropdown */}
@@ -316,7 +400,7 @@ export default function TaskComments({ taskId, members, currentMemberId }) {
         )}
       </div>
 
-      <p className="text-[10px] text-gray-400 mt-1">Type @ to mention someone. Press Enter to send, Shift+Enter for new line.</p>
+      <p className="text-[10px] text-gray-400 mt-1">Type @ to mention someone. 📎 to attach files. Enter to send.</p>
     </div>
   )
 }

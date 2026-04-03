@@ -11,10 +11,12 @@ export async function fetchComments(supabase, taskId) {
   return data || []
 }
 
-export async function createComment(supabase, { task_id, subtask_id = null, author_id, body, mentions = [] }) {
+export async function createComment(supabase, { task_id, subtask_id = null, author_id, body, mentions = [], attachments = [] }) {
+  const insertData = { task_id, subtask_id, author_id, body, mentions }
+  if (attachments && attachments.length > 0) insertData.attachments = attachments
   const { data, error } = await supabase
     .from('comments')
-    .insert({ task_id, subtask_id, author_id, body, mentions })
+    .insert(insertData)
     .select('*, author:members(*)')
     .single()
   if (error) throw error
