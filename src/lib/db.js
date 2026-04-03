@@ -1,6 +1,73 @@
 // Data access layer for Supabase
 import { createNotification } from './notifications'
 
+// ===== RECURRENCE HELPERS =====
+export function computeNextDueDate(currentDue, rule) {
+  if (!currentDue || !rule) return null
+  const date = new Date(currentDue + 'T00:00:00')
+  const { type, interval = 1, days, dayOfMonth } = rule
+
+  if (type === 'daily') {
+    date.setDate(date.getDate() + interval)
+  } else if (type === 'weekly') {
+    if (days && days.length > 0) {
+      // days are 0-6 (Mon-Sun), JS getDay: 0=Sun,1=Mon...6=Sat
+      const jsDay = date.getDay() // 0=Sun
+      const currentIdx = jsDay === 0 ? 6 : jsDay - 1 // convert to 0=Mon
+      const sorted = [...days].sort((a, b) => a - b)
+      const next = sorted.find(d => d > currentIdx)
+      if (next !== undefined) {
+        date.setDate(date.getDate() + (next - currentIdx))
+      } else {
+        // wrap to next week
+        date.setDate(date.getDate() + (7 * (interval - 1)) + (7 - currentIdx + sorted[0]))
+      }
+    } else {
+      date.setDate(date.getDate() + 7 * interval)
+    }
+  } else if (type === 'monthly') {
+    date.setMonth(date.getMonth() + interval)
+    if (dayOfMonth) date.setDate(Math.min(dayOfMonth, new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()))
+  } else if (type === 'yearly') {
+    date.setFullYear(date.getFullYear() + interval)
+  }
+
+  // Check end date
+  if (rule.endDate && date > new Date(rule.endDate + 'T23:59:59')) return null
+
+  return date.toISOString().split('T')[0]
+}
+
+export async function createRecurringFollowUp(supabase, task) {
+  if (!task.recurrence_rule || !task.due) return null
+  const nextDue = computeNextDueDate(task.due, task.recurrence_rule)
+  if (!nextDue) return null
+
+  const newTask = {
+    title: task.title,
+    section: 'Recently assigned',
+    due: nextDue,
+    priority: task.priority,
+    value: task.value,
+    effort: task.effort,
+    progress: null,
+    notes: task.notes,
+    assigned_to: task.assigned_to,
+    project_id: task.project_id,
+    created_by: task.created_by,
+    recurrence_rule: task.recurrence_rule,
+    recurrence_parent_id: task.id,
+  }
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert(newTask)
+    .select('*, subtasks(*)')
+    .single()
+  if (error) { console.error('Failed to create recurring task:', error); return null }
+  return data
+}
+
 // ===== TASKS =====
 export async function fetchTasks(supabase, { projectId = null } = {}) {
   let query = supabase
