@@ -432,8 +432,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
       <div className="relative">
-        <span className={`text-[11px] cursor-pointer hover:underline ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}
-          onClick={(e) => { e.stopPropagation(); e.currentTarget.nextSibling.showPicker?.(); e.currentTarget.nextSibling.focus() }}>
+        <span className={`text-[11px] cursor-pointer hover:underline ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}>
           {task.due ? formatSmartDate(task.due) : '—'}
         </span>
         <input
