@@ -2,7 +2,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
 import { useSupabase, useUser, useTasks, useMembers, useSections } from '../lib/hooks'
-import { createTask, updateTask, deleteTask, updateSubtask, createSection, deleteSection } from '../lib/db'
+import { createTask, updateTask, deleteTask, updateSubtask, createSection, deleteSection, createRecurringFollowUp } from '../lib/db'
 import TaskModal from './TaskModal'
 import AddTaskModal from './AddTaskModal'
 import AvatarChip from './AvatarChip'
@@ -62,6 +62,11 @@ export default function TaskApp({ projectId = null, projectName = null, settings
         clearUndo()
         setUndoToast({ taskId: task.id, title: task.title })
         undoTimerRef.current = setTimeout(() => setUndoToast(null), 3000)
+
+        // Auto-create next recurring task
+        if (task.recurrence_rule) {
+          await createRecurringFollowUp(supabase, task)
+        }
       }
     } catch (err) { console.error('Failed to toggle task:', err) }
   }, [supabase, clearUndo])
@@ -361,6 +366,23 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
   )
 }
 
+function formatSmartDate(dateStr) {
+  if (!dateStr) return ''
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const date = new Date(dateStr + 'T00:00:00')
+  const diffDays = Math.round((date - today) / 86400000)
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Tomorrow'
+  if (diffDays === -1) return 'Yesterday'
+  if (diffDays > 1 && diffDays <= 6) {
+    return date.toLocaleDateString('en-US', { weekday: 'long' })
+  }
+  if (diffDays < -1 && diffDays >= -6) {
+    return `Last ${date.toLocaleDateString('en-US', { weekday: 'long' })}`
+  }
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+}
+
 function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   const moveRef = useRef(null)
@@ -409,12 +431,18 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <span onClick={() => onOpen(task)} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
-      <input
-        type="date"
-        value={task.due || ''}
-        onChange={e => onInlineUpdate(task, 'due', e.target.value)}
-        className={`text-[11px] bg-transparent border border-transparent hover:border-gray-200 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full ${overdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}
-      />
+      <div className="relative">
+        <span className={`text-[11px] cursor-pointer hover:underline ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}
+          onClick={(e) => { e.stopPropagation(); e.currentTarget.nextSibling.showPicker?.(); e.currentTarget.nextSibling.focus() }}>
+          {task.due ? formatSmartDate(task.due) : '—'}
+        </span>
+        <input
+          type="date"
+          value={task.due || ''}
+          onChange={e => onInlineUpdate(task, 'due', e.target.value)}
+          className="absolute inset-0 opacity-0 w-full cursor-pointer"
+        />
+      </div>
       <select
         value={task.priority || ''}
         onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
@@ -497,7 +525,7 @@ function BoardCard({ task, onOpen, isOverdue }) {
         {task.priority && <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRIORITY_COLORS[task.priority]}`}>{task.priority}</span>}
         {subtaskCount > 0 && <span className="text-xs text-gray-400">{subtaskDone}/{subtaskCount}</span>}
         {task.assigned_member && <AvatarChip name={task.assigned_member.name} size="sm" />}
-        {due && <span className={`text-xs ml-auto ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>{due.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+        {task.due && <span className={`text-xs ml-auto ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>{formatSmartDate(task.due)}</span>}
       </div>
     </div>
   )

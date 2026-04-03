@@ -1,8 +1,8 @@
 'use client'
 import { useState } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, RECURRENCE_TYPES, WEEKDAYS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS } from '../lib/data'
-import { useSupabase, useUser } from '../lib/hooks'
-import { createSubtask, updateSubtask, deleteSubtask } from '../lib/db'
+import { useSupabase, useUser, useProjects } from '../lib/hooks'
+import { createSubtask, updateSubtask, deleteSubtask, updateTask } from '../lib/db'
 import MemberPicker from './MemberPicker'
 import TaskComments from './TaskComments'
 
@@ -10,6 +10,7 @@ export default function TaskModal({ task, members, sections: customSections, onC
   const sectionList = customSections && customSections.length > 0 ? customSections : DEFAULT_SECTIONS
   const supabase = useSupabase()
   const { user } = useUser()
+  const { projects } = useProjects()
   const currentMember = members?.find(m => m.profile_id === user?.id)
   const [notes, setNotes] = useState(task.notes || '')
   const [section, setSection] = useState(task.section || 'Recently assigned')
@@ -22,6 +23,9 @@ export default function TaskModal({ task, members, sections: customSections, onC
   const [newSubtask, setNewSubtask] = useState('')
   const [aiOutput, setAiOutput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const [showRecurrence, setShowRecurrence] = useState(!!task.recurrence_rule)
+  const [recurrence, setRecurrence] = useState(task.recurrence_rule || { type: 'weekly', interval: 1, days: [], dayOfMonth: 1, endDate: '' })
+  const [showProjectPicker, setShowProjectPicker] = useState(false)
 
   const saveField = (field, val) => {
     onUpdate({ ...task, notes, section, priority, value, effort, progress, due, assigned_to: assignedTo, [field]: val })
@@ -55,7 +59,19 @@ export default function TaskModal({ task, members, sections: customSections, onC
     setAiLoading(false)
   }
 
-  const dueDate = task.due ? new Date(task.due).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'No date'
+  const formatSmartDate = (dateStr) => {
+    if (!dateStr) return 'No date'
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const date = new Date(dateStr + 'T00:00:00')
+    const diffDays = Math.round((date - today) / 86400000)
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Tomorrow'
+    if (diffDays === -1) return 'Yesterday'
+    if (diffDays > 1 && diffDays <= 6) return date.toLocaleDateString('en-US', { weekday: 'long' })
+    if (diffDays < -1 && diffDays >= -6) return `Last ${date.toLocaleDateString('en-US', { weekday: 'long' })}`
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  }
+  const dueDate = formatSmartDate(task.due)
   const subtasks = task.subtasks || []
   const subtaskDone = subtasks.filter(s => s.done).length
 
@@ -129,22 +145,142 @@ export default function TaskModal({ task, members, sections: customSections, onC
           <input type="date" value={due} onChange={e => { setDue(e.target.value); saveField('due', e.target.value || null) }}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3 bg-white text-gray-800" />
 
-          {/* Recurrence info */}
-          {task.recurrence_rule && (
-            <div className="mb-3 bg-indigo-50 rounded-lg px-3 py-2 border border-indigo-100">
-              <p className="text-xs text-indigo-700 font-medium flex items-center gap-1">
-                <span>🔁</span> Repeats {task.recurrence_rule.type}
-                {task.recurrence_rule.interval > 1 && ` every ${task.recurrence_rule.interval} ${task.recurrence_rule.type === 'daily' ? 'days' : task.recurrence_rule.type === 'weekly' ? 'weeks' : task.recurrence_rule.type === 'monthly' ? 'months' : 'years'}`}
-                {task.recurrence_rule.type === 'weekly' && task.recurrence_rule.days?.length > 0 && ` on ${task.recurrence_rule.days.map(d => WEEKDAYS[d]).join(', ')}`}
-                {task.recurrence_rule.type === 'monthly' && task.recurrence_rule.dayOfMonth && ` on day ${task.recurrence_rule.dayOfMonth}`}
-              </p>
-              {task.recurrence_rule.endDate && (
-                <p className="text-[10px] text-indigo-500 mt-0.5">Until {new Date(task.recurrence_rule.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-              )}
-              <button onClick={() => saveField('recurrence_rule', null)}
-                className="text-[10px] text-indigo-500 hover:text-red-600 mt-1">Remove repeat</button>
-            </div>
-          )}
+          {/* Recurrence setup */}
+          <div className="mb-3">
+            <button onClick={() => {
+              if (showRecurrence) {
+                setShowRecurrence(false)
+                saveField('recurrence_rule', null)
+              } else {
+                setShowRecurrence(true)
+              }
+            }}
+              className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mb-1">
+              <span>{showRecurrence ? '▾' : '▸'}</span>
+              {showRecurrence ? 'Remove repeat' : '🔁 Set repeat schedule'}
+            </button>
+            {showRecurrence && (
+              <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100">
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <label className="text-[10px] text-gray-500 font-medium block mb-0.5">Repeats</label>
+                    <select value={recurrence.type} onChange={e => {
+                      const r = { ...recurrence, type: e.target.value }
+                      setRecurrence(r)
+                      saveField('recurrence_rule', r)
+                    }} className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white text-gray-800">
+                      {RECURRENCE_TYPES.map(rt => <option key={rt.value} value={rt.value}>{rt.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-500 font-medium block mb-0.5">Every</label>
+                    <div className="flex items-center gap-1">
+                      <input type="number" min="1" max="30" value={recurrence.interval}
+                        onChange={e => {
+                          const r = { ...recurrence, interval: parseInt(e.target.value) || 1 }
+                          setRecurrence(r)
+                          saveField('recurrence_rule', r)
+                        }}
+                        className="w-14 text-xs border border-gray-200 rounded px-2 py-1.5 bg-white text-gray-800" />
+                      <span className="text-xs text-gray-500">{recurrence.type === 'daily' ? 'day(s)' : recurrence.type === 'weekly' ? 'week(s)' : recurrence.type === 'monthly' ? 'month(s)' : 'year(s)'}</span>
+                    </div>
+                  </div>
+                </div>
+                {recurrence.type === 'weekly' && (
+                  <div className="mb-2">
+                    <label className="text-[10px] text-gray-500 font-medium block mb-0.5">On these days</label>
+                    <div className="flex gap-1">
+                      {WEEKDAYS.map((day, i) => (
+                        <button key={day} type="button"
+                          onClick={() => {
+                            const days = recurrence.days?.includes(i) ? recurrence.days.filter(d => d !== i) : [...(recurrence.days || []), i]
+                            const r = { ...recurrence, days }
+                            setRecurrence(r)
+                            saveField('recurrence_rule', r)
+                          }}
+                          className={`text-[10px] px-2 py-1 rounded border ${recurrence.days?.includes(i) ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'border-gray-200 text-gray-500 bg-white'}`}>
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {recurrence.type === 'monthly' && (
+                  <div className="mb-2">
+                    <label className="text-[10px] text-gray-500 font-medium block mb-0.5">Day of month</label>
+                    <input type="number" min="1" max="31" value={recurrence.dayOfMonth}
+                      onChange={e => {
+                        const r = { ...recurrence, dayOfMonth: parseInt(e.target.value) || 1 }
+                        setRecurrence(r)
+                        saveField('recurrence_rule', r)
+                      }}
+                      className="w-16 text-xs border border-gray-200 rounded px-2 py-1.5 bg-white text-gray-800" />
+                  </div>
+                )}
+                <div>
+                  <label className="text-[10px] text-gray-500 font-medium block mb-0.5">End date (optional)</label>
+                  <input type="date" value={recurrence.endDate || ''}
+                    onChange={e => {
+                      const r = { ...recurrence, endDate: e.target.value }
+                      setRecurrence(r)
+                      const saveRule = { ...r }
+                      if (!saveRule.endDate) delete saveRule.endDate
+                      saveField('recurrence_rule', saveRule)
+                    }}
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white text-gray-800" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Add to project */}
+          <div className="mb-3">
+            <label className="text-xs text-gray-500 font-medium block mb-1">Project</label>
+            {task.project_id ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs bg-indigo-50 text-indigo-700 rounded-lg px-3 py-1.5 border border-indigo-100">
+                  {projects.find(p => p.id === task.project_id)?.name || 'Project'}
+                </span>
+                <button onClick={async () => {
+                  try {
+                    await updateTask(supabase, task.id, { project_id: null })
+                    onUpdate({ ...task, project_id: null })
+                  } catch (err) { console.error('Failed:', err) }
+                }} className="text-[10px] text-gray-400 hover:text-red-600">Remove</button>
+              </div>
+            ) : (
+              <>
+                {showProjectPicker ? (
+                  <div className="flex flex-col gap-1">
+                    {projects.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">No projects yet</p>
+                    ) : (
+                      projects.map(p => (
+                        <button key={p.id} onClick={async () => {
+                          try {
+                            await updateTask(supabase, task.id, { project_id: p.id })
+                            onUpdate({ ...task, project_id: p.id })
+                            setShowProjectPicker(false)
+                          } catch (err) { console.error('Failed:', err) }
+                        }}
+                          className="text-left text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-200 text-gray-700 transition-colors flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></span>
+                          {p.name}
+                        </button>
+                      ))
+                    )}
+                    <button onClick={() => setShowProjectPicker(false)}
+                      className="text-[10px] text-gray-400 hover:text-gray-600 mt-1">Cancel</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowProjectPicker(true)}
+                    className="text-xs px-3 py-1.5 border border-dashed border-gray-300 rounded-lg text-gray-500 hover:bg-gray-50 hover:border-indigo-300 hover:text-indigo-600 transition-colors flex items-center gap-1">
+                    <span>+</span> Add to project
+                  </button>
+                )}
+              </>
+            )}
+          </div>
 
           {/* Subtasks */}
           <div className="mb-3">
