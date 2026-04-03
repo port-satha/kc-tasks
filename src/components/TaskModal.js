@@ -1,8 +1,8 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, RECURRENCE_TYPES, WEEKDAYS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS } from '../lib/data'
-import { useSupabase, useUser, useProjects } from '../lib/hooks'
-import { createSubtask, updateSubtask, deleteSubtask, updateTask } from '../lib/db'
+import { useSupabase, useUser } from '../lib/hooks'
+import { createSubtask, updateSubtask, deleteSubtask, updateTask, fetchProjects } from '../lib/db'
 import MemberPicker from './MemberPicker'
 import TaskComments from './TaskComments'
 
@@ -10,8 +10,12 @@ export default function TaskModal({ task, members, sections: customSections, onC
   const sectionList = customSections && customSections.length > 0 ? customSections : DEFAULT_SECTIONS
   const supabase = useSupabase()
   const { user } = useUser()
-  const { projects } = useProjects()
+  const [projects, setProjects] = useState([])
   const currentMember = members?.find(m => m.profile_id === user?.id)
+
+  useEffect(() => {
+    fetchProjects(supabase).then(setProjects).catch(() => setProjects([]))
+  }, [supabase])
   const [notes, setNotes] = useState(task.notes || '')
   const [section, setSection] = useState(task.section || 'Recently assigned')
   const [priority, setPriority] = useState(task.priority || '')
