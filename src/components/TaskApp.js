@@ -352,7 +352,7 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
 
   return (
     <div className="p-4 flex-1">
-      <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1">
+      <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1 bg-gray-50 sticky top-12 z-[5]">
         <span>Name</span><span>Due date</span><span>Priority</span><span>Value</span><span>Effort level</span><span>Task Progress</span><span>Assignee</span>
       </div>
       {Object.entries(grouped).map(([section, sectionTasks]) => {
@@ -443,6 +443,108 @@ function formatSmartDate(dateStr) {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
 
+function DatePicker({ value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const [viewDate, setViewDate] = useState(() => {
+    if (value) return new Date(value + 'T00:00:00')
+    return new Date()
+  })
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const year = viewDate.getFullYear()
+  const month = viewDate.getMonth()
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const selected = value ? new Date(value + 'T00:00:00') : null
+
+  // Build calendar grid
+  const firstDay = new Date(year, month, 1)
+  const startDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1 // Mon=0
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const weeks = []
+  let day = 1 - startDay
+  for (let w = 0; w < 6; w++) {
+    const week = []
+    for (let d = 0; d < 7; d++, day++) {
+      week.push(new Date(year, month, day))
+    }
+    weeks.push(week)
+    if (day > daysInMonth) break
+  }
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const dayNames = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+
+  const selectDate = (d) => {
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    onChange(iso)
+    setOpen(false)
+  }
+
+  const isOverdue = value && !open && selected && selected < today
+
+  return (
+    <div className="relative" ref={ref} onMouseDown={e => e.stopPropagation()} onDragStart={e => e.stopPropagation()} draggable={false}>
+      <button type="button" onClick={() => { setOpen(!open); if (value) setViewDate(new Date(value + 'T00:00:00')) }}
+        className={`text-[11px] border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer w-full text-left ${isOverdue ? 'text-red-600 font-medium' : value ? 'text-gray-600' : 'text-gray-400'}`}>
+        {value ? formatSmartDate(value) : '—'}
+      </button>
+      {open && (
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-3">
+          {/* Quick picks */}
+          <div className="flex gap-1 mb-2">
+            {[
+              ['Today', 0], ['Tomorrow', 1],
+            ].map(([label, offset]) => {
+              const d = new Date(); d.setDate(d.getDate() + offset)
+              const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+              return <button key={label} onClick={() => { onChange(iso); setOpen(false) }}
+                className="text-[10px] px-2 py-1 rounded-full border border-gray-200 text-gray-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700">{label}</button>
+            })}
+            {value && <button onClick={() => { onChange(''); setOpen(false) }}
+              className="text-[10px] px-2 py-1 rounded-full border border-gray-200 text-red-500 hover:bg-red-50 ml-auto">Clear</button>}
+          </div>
+          {/* Month nav */}
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={() => setViewDate(new Date(year, month - 1, 1))} className="text-gray-400 hover:text-gray-700 text-sm px-1">&lt;</button>
+            <span className="text-xs font-semibold text-gray-800">{monthNames[month]} {year}</span>
+            <button onClick={() => setViewDate(new Date(year, month + 1, 1))} className="text-gray-400 hover:text-gray-700 text-sm px-1">&gt;</button>
+          </div>
+          {/* Day headers */}
+          <div className="grid grid-cols-7 gap-0 mb-1">
+            {dayNames.map((d, i) => <span key={i} className="text-[10px] text-gray-400 text-center font-medium">{d}</span>)}
+          </div>
+          {/* Calendar grid */}
+          {weeks.map((week, wi) => (
+            <div key={wi} className="grid grid-cols-7 gap-0">
+              {week.map((d, di) => {
+                const inMonth = d.getMonth() === month
+                const isToday = d.getTime() === today.getTime()
+                const isSel = selected && d.toDateString() === selected.toDateString()
+                return (
+                  <button key={di} onClick={() => selectDate(d)}
+                    className={`text-[11px] w-7 h-7 rounded-full flex items-center justify-center transition-colors
+                      ${!inMonth ? 'text-gray-300' : 'text-gray-700 hover:bg-indigo-50'}
+                      ${isToday ? 'font-bold ring-1 ring-indigo-400' : ''}
+                      ${isSel ? 'bg-indigo-600 text-white hover:bg-indigo-700' : ''}`}>
+                    {d.getDate()}
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   const moveRef = useRef(null)
@@ -460,6 +562,9 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
   const otherSections = (allSections || []).filter(s => s !== currentSection)
 
   const selectClass = "text-[11px] bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full"
+
+  // Prevent draggable parent from stealing clicks on form elements
+  const stopDrag = { onMouseDown: e => e.stopPropagation(), onDragStart: e => e.stopPropagation(), draggable: false }
 
   return (
     <div className={`grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''}`}>
@@ -491,18 +596,8 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <span onClick={() => onOpen(task)} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
-      <div className="relative">
-        <span className={`text-[11px] cursor-pointer hover:underline ${overdue ? 'text-red-600 font-medium' : task.due ? 'text-gray-600' : 'text-gray-400'}`}>
-          {task.due ? formatSmartDate(task.due) : '—'}
-        </span>
-        <input
-          type="date"
-          value={task.due || ''}
-          onChange={e => onInlineUpdate(task, 'due', e.target.value)}
-          className="absolute inset-0 opacity-0 w-full cursor-pointer"
-        />
-      </div>
-      <select
+      <DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} />
+      <select {...stopDrag}
         value={task.priority || ''}
         onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
         className={`${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
@@ -510,7 +605,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <option value="">—</option>
         {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
       </select>
-      <select
+      <select {...stopDrag}
         value={task.value || ''}
         onChange={e => onInlineUpdate(task, 'value', e.target.value)}
         className={`${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
@@ -518,7 +613,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <option value="">—</option>
         {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
       </select>
-      <select
+      <select {...stopDrag}
         value={task.effort || ''}
         onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
         className={`${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
@@ -526,7 +621,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <option value="">—</option>
         {EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
       </select>
-      <select
+      <select {...stopDrag}
         value={task.progress || ''}
         onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
         className={`${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
@@ -534,7 +629,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         <option value="">—</option>
         {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
       </select>
-      <select
+      <select {...stopDrag}
         value={task.assigned_to || ''}
         onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
         className={`${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
