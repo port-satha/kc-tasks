@@ -26,8 +26,12 @@ export function computeNextDueDate(currentDue, rule) {
       date.setDate(date.getDate() + 7 * interval)
     }
   } else if (type === 'monthly') {
+    // Set day to 1 first to avoid month overflow (e.g. Jan 31 + 1 month → Mar 3 instead of Feb 28)
+    const targetDay = dayOfMonth || date.getDate()
+    date.setDate(1)
     date.setMonth(date.getMonth() + interval)
-    if (dayOfMonth) date.setDate(Math.min(dayOfMonth, new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()))
+    const maxDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+    date.setDate(Math.min(targetDay, maxDay))
   } else if (type === 'yearly') {
     date.setFullYear(date.getFullYear() + interval)
   }

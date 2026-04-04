@@ -28,13 +28,81 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const undoTimerRef = useRef(null)
   const [draggedTaskId, setDraggedTaskId] = useState(null)
   const [dropTargetId, setDropTargetId] = useState(null) // task id to drop before
+  const [sectionOrder, setSectionOrder] = useState(null) // custom order, null = default
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set())
 
   // Merge default sections with any custom ones
-  const allSections = [...new Set([...DEFAULT_SECTIONS, ...customSections])]
-  tasks.forEach(t => { if (t.section && !allSections.includes(t.section)) allSections.push(t.section) })
+  const baseSections = [...new Set([...DEFAULT_SECTIONS, ...customSections])]
+  tasks.forEach(t => { if (t.section && !baseSections.includes(t.section)) baseSections.push(t.section) })
+
+  // Apply custom order if set
+  const allSections = sectionOrder
+    ? [...sectionOrder.filter(s => baseSections.includes(s)), ...baseSections.filter(s => !sectionOrder.includes(s))]
+    : baseSections
+
+  // Load section order from localStorage
+  const storageKey = `sectionOrder-${projectId || 'personal'}`
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) setSectionOrder(JSON.parse(saved))
+    } catch {}
+  }, [storageKey])
+
+  const handleReorderSections = (draggedSec, targetSec) => {
+    if (draggedSec === targetSec) return
+    const ordered = [...allSections]
+    const fromIdx = ordered.indexOf(draggedSec)
+    const toIdx = ordered.indexOf(targetSec)
+    if (fromIdx === -1 || toIdx === -1) return
+    ordered.splice(fromIdx, 1)
+    ordered.splice(toIdx, 0, draggedSec)
+    setSectionOrder(ordered)
+    try { localStorage.setItem(storageKey, JSON.stringify(ordered)) } catch {}
+  }
 
   const toggleSection = (sec) => setCollapsedSections(prev => ({ ...prev, [sec]: !prev[sec] }))
   const toggleTaskExpand = (taskId) => setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }))
+
+  // Multi-select
+  const handleSelectTask = useCallback((taskId, e) => {
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedTaskIds(prev => {
+        const next = new Set(prev)
+        if (next.has(taskId)) next.delete(taskId); else next.add(taskId)
+        return next
+      })
+    } else {
+      setSelectedTaskIds(new Set())
+    }
+  }, [])
+
+  const clearSelection = () => setSelectedTaskIds(new Set())
+
+  const bulkUpdate = useCallback(async (field, value) => {
+    if (selectedTaskIds.size === 0) return
+    try {
+      await Promise.all([...selectedTaskIds].map(id => updateTask(supabase, id, { [field]: value || null })))
+      clearSelection()
+    } catch (err) { console.error('Bulk update failed:', err) }
+  }, [supabase, selectedTaskIds])
+
+  const bulkDelete = useCallback(async () => {
+    if (selectedTaskIds.size === 0) return
+    if (!confirm(`Delete ${selectedTaskIds.size} task(s)?`)) return
+    try {
+      await Promise.all([...selectedTaskIds].map(id => deleteTask(supabase, id)))
+      clearSelection()
+    } catch (err) { console.error('Bulk delete failed:', err) }
+  }, [supabase, selectedTaskIds])
+
+  const bulkDone = useCallback(async () => {
+    if (selectedTaskIds.size === 0) return
+    try {
+      await Promise.all([...selectedTaskIds].map(id => updateTask(supabase, id, { progress: 'Done' })))
+      clearSelection()
+    } catch (err) { console.error('Bulk done failed:', err) }
+  }, [supabase, selectedTaskIds])
 
   const handleAddSection = async () => {
     if (!newSectionName.trim()) return
@@ -299,6 +367,41 @@ export default function TaskApp({ projectId = null, projectName = null, settings
 
       {view === 'list' ? (
         <>
+          {/* Bulk actions bar */}
+          {selectedTaskIds.size > 0 && (
+            <div className="bg-indigo-600 text-white px-4 py-2 flex items-center gap-3 sticky top-12 z-[6]">
+              <span className="text-xs font-medium">{selectedTaskIds.size} selected</span>
+              <div className="flex gap-1 items-center ml-2">
+                <select onChange={e => { if (e.target.value) bulkUpdate('priority', e.target.value); e.target.value = '' }}
+                  className="text-xs bg-indigo-500 text-white border border-indigo-400 rounded px-2 py-1 cursor-pointer">
+                  <option value="">Priority</option>
+                  {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <select onChange={e => { if (e.target.value) bulkUpdate('progress', e.target.value); e.target.value = '' }}
+                  className="text-xs bg-indigo-500 text-white border border-indigo-400 rounded px-2 py-1 cursor-pointer">
+                  <option value="">Progress</option>
+                  {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <select onChange={e => { if (e.target.value) bulkUpdate('section', e.target.value); e.target.value = '' }}
+                  className="text-xs bg-indigo-500 text-white border border-indigo-400 rounded px-2 py-1 cursor-pointer">
+                  <option value="">Move to...</option>
+                  {allSections.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {members.length > 0 && (
+                  <select onChange={e => { if (e.target.value) bulkUpdate('assigned_to', e.target.value === '__none__' ? '' : e.target.value); e.target.value = '' }}
+                    className="text-xs bg-indigo-500 text-white border border-indigo-400 rounded px-2 py-1 cursor-pointer">
+                    <option value="">Assign to...</option>
+                    <option value="__none__">Unassign</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+                  </select>
+                )}
+                <button onClick={bulkDone} className="text-xs bg-green-500 hover:bg-green-600 text-white rounded px-2 py-1">✓ Done</button>
+                <button onClick={bulkDelete} className="text-xs bg-red-500 hover:bg-red-600 text-white rounded px-2 py-1">🗑 Delete</button>
+              </div>
+              <button onClick={clearSelection} className="text-xs text-indigo-200 hover:text-white ml-auto">✕ Clear</button>
+            </div>
+          )}
+
           <ListView grouped={grouped} collapsedSections={collapsedSections} toggleSection={toggleSection}
             expandedTasks={expandedTasks} toggleTaskExpand={toggleTaskExpand} toggleSubtask={handleToggleSubtask}
             toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue}
@@ -306,7 +409,9 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             draggedTaskId={draggedTaskId} setDraggedTaskId={setDraggedTaskId} onDropOnSection={handleDropOnSection}
             dropTargetId={dropTargetId} setDropTargetId={setDropTargetId} onReorderTask={handleReorderTask}
             allSections={allSections} onMoveToSection={(taskId, section) => updateTask(supabase, taskId, { section })}
-            onRenameSection={handleRenameSection} onDeleteSection={handleDeleteSection} />
+            onRenameSection={handleRenameSection} onDeleteSection={handleDeleteSection}
+            onReorderSections={handleReorderSections}
+            selectedTaskIds={selectedTaskIds} onSelectTask={handleSelectTask} />
 
           {/* Done section — collapsed by default */}
           {filteredDone.length > 0 && (
@@ -374,7 +479,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   )
 }
 
-function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDelete }) {
+function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDelete, isDragOver, onSectionDragStart, onSectionDragOver, onSectionDrop, onSectionDragEnd }) {
   const [showMenu, setShowMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(section)
@@ -395,15 +500,23 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
   }
 
   return (
-    <div className="flex items-center gap-1 group/sec">
+    <div className={`flex items-center gap-1 group/sec ${isDragOver ? 'border-t-2 border-indigo-500' : ''}`}
+      draggable={!editing}
+      onDragStart={e => { e.dataTransfer.setData('section', section); onSectionDragStart(section) }}
+      onDragOver={e => { e.preventDefault(); e.stopPropagation(); onSectionDragOver(section) }}
+      onDrop={e => { e.preventDefault(); e.stopPropagation(); onSectionDrop(section) }}
+      onDragEnd={onSectionDragEnd}>
       <button onClick={onToggle}
         className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors flex-1 min-w-0">
+        <span className="cursor-grab text-gray-300 hover:text-gray-500 text-xs select-none mr-1" title="Drag to reorder">⠿</span>
         <span className={`text-gray-400 text-xs transition-transform ${collapsed ? '' : 'rotate-90'}`}>▶</span>
         {editing ? (
           <input autoFocus value={editName} onChange={e => setEditName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false) }}
             onBlur={handleRename}
             onClick={e => e.stopPropagation()}
+            onDragStart={e => e.stopPropagation()}
+            draggable={false}
             className="text-sm font-semibold text-gray-900 border border-indigo-300 rounded px-1 py-0 bg-white w-48" />
         ) : (
           <span className="text-sm font-semibold text-gray-900">{section}</span>
@@ -432,7 +545,9 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection, onRenameSection, onDeleteSection }) {
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection, onRenameSection, onDeleteSection, onReorderSections, selectedTaskIds, onSelectTask }) {
+  const [draggedSection, setDraggedSection] = useState(null)
+  const [dropTargetSection, setDropTargetSection] = useState(null)
 
   const handleDragOverTask = (e, taskId) => {
     e.preventDefault()
@@ -455,7 +570,12 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
             onDragOver={e => { e.preventDefault() }}
             onDrop={e => { e.preventDefault(); onDropOnSection(section) }}>
             <SectionHeader section={section} taskCount={sectionTasks.length} collapsed={collapsed}
-              onToggle={() => toggleSection(section)} onRename={onRenameSection} onDelete={onDeleteSection} />
+              onToggle={() => toggleSection(section)} onRename={onRenameSection} onDelete={onDeleteSection}
+              isDragOver={dropTargetSection === section && draggedSection !== section}
+              onSectionDragStart={() => setDraggedSection(section)}
+              onSectionDragOver={() => { if (draggedSection && draggedSection !== section) setDropTargetSection(section) }}
+              onSectionDrop={() => { if (draggedSection) { onReorderSections(draggedSection, section); setDraggedSection(null); setDropTargetSection(null) } }}
+              onSectionDragEnd={() => { setDraggedSection(null); setDropTargetSection(null) }} />
             {!collapsed && (
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2">
                 {sectionTasks.length === 0 && draggedTaskId && (
@@ -481,7 +601,8 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
                       isExpanded={expandedTasks[t.id]} onToggleExpand={() => toggleTaskExpand(t.id)}
                       members={members} onInlineUpdate={onInlineUpdate}
                       isDragging={draggedTaskId === t.id}
-                      allSections={allSections} currentSection={section} onMoveToSection={onMoveToSection} />
+                      allSections={allSections} currentSection={section} onMoveToSection={onMoveToSection}
+                      isSelected={selectedTaskIds?.has(t.id)} onSelect={onSelectTask} />
                     {expandedTasks[t.id] && t.subtasks && t.subtasks.length > 0 && (
                       <div className="bg-gray-50 border-t border-gray-100">
                         {t.subtasks.map(st => (
@@ -633,7 +754,7 @@ function DatePicker({ value, onChange }) {
   )
 }
 
-function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection }) {
+function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection, isSelected, onSelect }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   const moveRef = useRef(null)
   const overdue = isOverdue(task)
@@ -655,7 +776,8 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
   const stopDrag = { onMouseDown: e => e.stopPropagation(), onDragStart: e => e.stopPropagation(), draggable: false }
 
   return (
-    <div className={`grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''}`}>
+    <div onClick={e => onSelect?.(task.id, e)}
+      className={`grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''} ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
       <div className="flex items-center gap-2 min-w-0">
         <div className="relative flex-shrink-0" ref={moveRef}>
           <span className="cursor-grab text-gray-300 hover:text-gray-500 text-xs select-none" title="Drag to move"
@@ -681,7 +803,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
           className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${task.progress === 'Done' ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
           {task.progress === 'Done' && <span className="text-white text-xs">✓</span>}
         </button>
-        <span onClick={() => onOpen(task)} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
+        <span onClick={(e) => { if (!e.ctrlKey && !e.metaKey) onOpen(task) }} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
       <DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} />
