@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, RECURRENCE_TYPES, WEEKDAYS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS } from '../lib/data'
 import { useSupabase, useUser } from '../lib/hooks'
-import { createSubtask, updateSubtask, deleteSubtask, updateTask, fetchProjects } from '../lib/db'
+import { createSubtask, updateSubtask, deleteSubtask, updateTask, deleteTask as deleteTaskDb, fetchProjects, createChildTask, fetchChildTasks, fetchParentTask } from '../lib/db'
 import MemberPicker from './MemberPicker'
 import TaskComments from './TaskComments'
 
@@ -16,6 +16,18 @@ export default function TaskModal({ task, members, sections: customSections, onC
   useEffect(() => {
     fetchProjects(supabase).then(setProjects).catch(() => setProjects([]))
   }, [supabase])
+
+  // Load child tasks
+  useEffect(() => {
+    fetchChildTasks(supabase, task.id).then(setChildTasks).catch(() => setChildTasks([]))
+  }, [supabase, task.id])
+
+  // Load parent task info if this is a child
+  useEffect(() => {
+    if (task.parent_task_id && !parentTaskInfo) {
+      fetchParentTask(supabase, task.parent_task_id).then(setParentTaskInfo).catch(() => {})
+    }
+  }, [supabase, task.parent_task_id, parentTaskInfo])
   const [notes, setNotes] = useState(task.notes || '')
   const [section, setSection] = useState(task.section || 'Recently assigned')
   const [priority, setPriority] = useState(task.priority || '')
@@ -25,6 +37,8 @@ export default function TaskModal({ task, members, sections: customSections, onC
   const [due, setDue] = useState(task.due || '')
   const [assignedTo, setAssignedTo] = useState(task.assigned_to || '')
   const [newSubtask, setNewSubtask] = useState('')
+  const [childTasks, setChildTasks] = useState(task.children || [])
+  const [parentTaskInfo, setParentTaskInfo] = useState(task._parentTask || null)
   const [aiOutput, setAiOutput] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [showRecurrence, setShowRecurrence] = useState(!!task.recurrence_rule)
@@ -43,7 +57,14 @@ export default function TaskModal({ task, members, sections: customSections, onC
   const handleAddSubtask = async () => {
     if (!newSubtask.trim()) return
     try {
-      await createSubtask(supabase, task.id, newSubtask.trim())
+      // Create as child task (Asana-style)
+      const child = await createChildTask(supabase, task.id, {
+        title: newSubtask.trim(),
+        created_by: user?.id,
+        project_id: task.project_id,
+        section: task.section
+      })
+      setChildTasks(prev => [...prev, child])
       setNewSubtask('')
     } catch (err) { console.error('Failed:', err) }
   }
@@ -51,6 +72,29 @@ export default function TaskModal({ task, members, sections: customSections, onC
   const handleDeleteSubtask = async (stId) => {
     try { await deleteSubtask(supabase, stId) }
     catch (err) { console.error('Failed:', err) }
+  }
+
+  // Child task handlers
+  const handleToggleChildDone = async (child) => {
+    const newProgress = child.progress === 'Done' ? '' : 'Done'
+    try {
+      await updateTask(supabase, child.id, { progress: newProgress })
+      setChildTasks(prev => prev.map(c => c.id === child.id ? { ...c, progress: newProgress } : c))
+    } catch (err) { console.error('Failed:', err) }
+  }
+
+  const handleUpdateChild = async (child, field, value) => {
+    try {
+      await updateTask(supabase, child.id, { [field]: value || null })
+      setChildTasks(prev => prev.map(c => c.id === child.id ? { ...c, [field]: value || null } : c))
+    } catch (err) { console.error('Failed:', err) }
+  }
+
+  const handleDeleteChild = async (childId) => {
+    try {
+      await deleteTaskDb(supabase, childId)
+      setChildTasks(prev => prev.filter(c => c.id !== childId))
+    } catch (err) { console.error('Failed:', err) }
   }
 
   const aiAssist = async (mode) => {
@@ -78,13 +122,20 @@ export default function TaskModal({ task, members, sections: customSections, onC
   const dueDate = formatSmartDate(task.due)
   const subtasks = task.subtasks || []
   const subtaskDone = subtasks.filter(s => s.done).length
+  const totalChildCount = childTasks.length + subtasks.length
+  const totalChildDone = childTasks.filter(c => c.progress === 'Done').length + subtaskDone
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-end p-4 pt-12" onClick={onClose}>
       <div className="bg-white rounded-2xl border border-gray-200 w-[420px] max-h-[85vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="p-5">
           <div className="flex items-start justify-between mb-1">
-            <h2 className="text-base font-semibold text-gray-900 leading-snug pr-4">{task.title}</h2>
+            <div className="pr-4">
+              {parentTaskInfo && (
+                <p className="text-[11px] text-indigo-500 mb-0.5">{parentTaskInfo.title} ›</p>
+              )}
+              <h2 className="text-base font-semibold text-gray-900 leading-snug">{task.title}</h2>
+            </div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none flex-shrink-0">×</button>
           </div>
           <p className="text-xs text-gray-500 mb-4">Due {dueDate}</p>
@@ -286,13 +337,60 @@ export default function TaskModal({ task, members, sections: customSections, onC
             )}
           </div>
 
-          {/* Subtasks */}
+          {/* Subtasks (Child Tasks) */}
           <div className="mb-3">
             <label className="text-xs text-gray-500 font-medium block mb-2">
-              Subtasks {subtasks.length > 0 && <span className="text-gray-400">({subtaskDone}/{subtasks.length})</span>}
+              Subtasks {totalChildCount > 0 && <span className="text-gray-400">({totalChildDone}/{totalChildCount})</span>}
             </label>
-            {subtasks.length > 0 && (
+            {(childTasks.length > 0 || subtasks.length > 0) && (
               <div className="bg-gray-50 rounded-lg border border-gray-200 mb-2 overflow-hidden">
+                {/* Child tasks (Asana-style full tasks) */}
+                {childTasks.map(child => {
+                  const assignedMember = child.assigned_to && members ? members.find(m => m.id === child.assigned_to) : null
+                  return (
+                    <div key={child.id} className="border-b border-gray-100 last:border-0 group">
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <button onClick={() => handleToggleChildDone(child)}
+                          className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${child.progress === 'Done' ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
+                          {child.progress === 'Done' && <span className="text-white text-[9px]">✓</span>}
+                        </button>
+                        <span onClick={() => onClose() || setTimeout(() => onUpdate && onUpdate(child), 100)}
+                          className={`text-xs flex-1 cursor-pointer hover:text-indigo-600 ${child.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{child.title}</span>
+                        <button onClick={() => handleDeleteChild(child.id)}
+                          className="text-gray-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 flex-shrink-0">×</button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 px-3 pb-2 pl-9">
+                        <input type="date" value={child.due || ''}
+                          onChange={e => handleUpdateChild(child, 'due', e.target.value)}
+                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 w-28" />
+                        <select value={child.priority || ''}
+                          onChange={e => handleUpdateChild(child, 'priority', e.target.value)}
+                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 w-20">
+                          <option value="">Priority</option>
+                          {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <select value={child.progress || ''}
+                          onChange={e => handleUpdateChild(child, 'progress', e.target.value)}
+                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 w-24">
+                          <option value="">Progress</option>
+                          {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <select value={child.assigned_to || ''}
+                          onChange={e => handleUpdateChild(child, 'assigned_to', e.target.value)}
+                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 flex-1 max-w-[140px]">
+                          <option value="">No assignee</option>
+                          {(members || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+                        {assignedMember && (
+                          <span className="text-[10px] bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5 flex-shrink-0">
+                            {assignedMember.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+                {/* Legacy subtasks (from old subtasks table) */}
                 {subtasks.map(st => {
                   const assignedMember = st.assigned_to && members ? members.find(m => m.id === st.assigned_to) : null
                   return (
@@ -307,21 +405,14 @@ export default function TaskModal({ task, members, sections: customSections, onC
                           className="text-gray-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 flex-shrink-0">×</button>
                       </div>
                       <div className="flex items-center gap-2 px-3 pb-2 pl-9">
-                        <input
-                          type="date"
-                          value={st.due || ''}
+                        <input type="date" value={st.due || ''}
                           onChange={e => updateSubtask(supabase, st.id, { due: e.target.value || null })}
-                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 w-28"
-                        />
-                        <select
-                          value={st.assigned_to || ''}
+                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 w-28" />
+                        <select value={st.assigned_to || ''}
                           onChange={e => updateSubtask(supabase, st.id, { assigned_to: e.target.value || null })}
-                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 flex-1 max-w-[140px]"
-                        >
+                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 flex-1 max-w-[140px]">
                           <option value="">No assignee</option>
-                          {(members || []).map(m => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
+                          {(members || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                         </select>
                         {assignedMember && (
                           <span className="text-[10px] bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5 flex-shrink-0">
