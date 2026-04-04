@@ -9,15 +9,15 @@ ALTER TABLE public.tasks
 
 CREATE INDEX IF NOT EXISTS idx_tasks_parent_task_id ON public.tasks(parent_task_id);
 
--- 2. Update RLS: allow viewing child tasks if you can see the parent
--- Drop and recreate the select policy to include parent_task_id visibility
+-- 2. Update RLS: child tasks inherit visibility from project_id and created_by
+-- No self-referencing check needed (would cause infinite recursion in PostgreSQL RLS)
 DROP POLICY IF EXISTS "View own personal tasks" ON public.tasks;
 CREATE POLICY "View own personal tasks" ON public.tasks FOR SELECT TO authenticated
   USING (
-    -- Original personal tasks (no project, no parent)
-    (project_id IS NULL AND parent_task_id IS NULL AND created_by = auth.uid())
+    -- Personal tasks (including child tasks): creator can see
+    (project_id IS NULL AND created_by = auth.uid())
     OR
-    -- Project tasks
+    -- Project tasks (including child tasks in projects)
     (project_id IS NOT NULL AND EXISTS (
       SELECT 1 FROM public.projects p WHERE p.id = project_id
       AND (NOT p.is_private OR p.owner_id = auth.uid() OR EXISTS (
@@ -25,11 +25,6 @@ CREATE POLICY "View own personal tasks" ON public.tasks FOR SELECT TO authentica
         JOIN public.members m ON m.id = pm.member_id
         WHERE pm.project_id = p.id AND m.profile_id = auth.uid()
       ))
-    ))
-    OR
-    -- Child tasks (subtasks): visible if parent is visible
-    (parent_task_id IS NOT NULL AND EXISTS (
-      SELECT 1 FROM public.tasks parent WHERE parent.id = parent_task_id
     ))
     OR
     -- Tasks assigned to the current user (via members table)
