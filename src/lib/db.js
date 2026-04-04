@@ -171,7 +171,7 @@ export async function createTask(supabase, taskData) {
 }
 
 export async function updateTask(supabase, taskId, updates, { previousAssignedTo = null } = {}) {
-  const { assigned_member, subtasks, ...cleanUpdates } = updates
+  const { assigned_member, subtasks, children, _parentTask, _isAssignedChild, ...cleanUpdates } = updates
   // Clean empty strings to null for date/enum fields
   const nullIfEmpty = ['due', 'priority', 'value', 'effort', 'progress', 'assigned_to']
   nullIfEmpty.forEach(f => { if (f in cleanUpdates && cleanUpdates[f] === '') cleanUpdates[f] = null })
