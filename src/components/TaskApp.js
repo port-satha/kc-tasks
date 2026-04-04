@@ -2,7 +2,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
 import { useSupabase, useUser, useTasks, useMembers, useSections } from '../lib/hooks'
-import { createTask, updateTask, deleteTask, updateSubtask, createSection, deleteSection, createRecurringFollowUp } from '../lib/db'
+import { createTask, updateTask, deleteTask, updateSubtask, createSection, deleteSection, renameSection, createRecurringFollowUp } from '../lib/db'
 import TaskModal from './TaskModal'
 import AddTaskModal from './AddTaskModal'
 import AvatarChip from './AvatarChip'
@@ -12,7 +12,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const { user } = useUser()
   const { tasks, loading } = useTasks(projectId)
   const { members } = useMembers()
-  const { sections: customSections, reload: reloadSections } = useSections(projectId, user?.id)
+  const { sections: customSections, sectionObjects, reload: reloadSections } = useSections(projectId, user?.id)
   const [view, setView] = useState('list')
   const [activeTask, setActiveTask] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
@@ -44,6 +44,39 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       setShowAddSection(false)
       reloadSections()
     } catch (err) { alert('Failed to add section: ' + err.message) }
+  }
+
+  const handleRenameSection = async (oldName, newName) => {
+    if (!newName.trim() || newName === oldName) return
+    // Find section object by name
+    const secObj = sectionObjects.find(s => s.name === oldName)
+    if (secObj) {
+      try {
+        await renameSection(supabase, secObj.id, newName.trim())
+        // Update tasks in this section to the new name
+        const tasksInSection = tasks.filter(t => t.section === oldName)
+        await Promise.all(tasksInSection.map(t => updateTask(supabase, t.id, { section: newName.trim() })))
+        reloadSections()
+      } catch (err) { alert('Failed to rename section: ' + err.message) }
+    } else {
+      // It's a default section — just rename all tasks in it
+      try {
+        const tasksInSection = tasks.filter(t => (t.section || 'Recently assigned') === oldName)
+        await Promise.all(tasksInSection.map(t => updateTask(supabase, t.id, { section: newName.trim() })))
+      } catch (err) { alert('Failed to rename section: ' + err.message) }
+    }
+  }
+
+  const handleDeleteSection = async (sectionName) => {
+    if (!confirm(`Delete section "${sectionName}"? Tasks will be moved to "Recently assigned".`)) return
+    // Move tasks to Recently assigned
+    const tasksInSection = tasks.filter(t => t.section === sectionName)
+    try {
+      await Promise.all(tasksInSection.map(t => updateTask(supabase, t.id, { section: 'Recently assigned' })))
+      const secObj = sectionObjects.find(s => s.name === sectionName)
+      if (secObj) await deleteSection(supabase, secObj.id)
+      reloadSections()
+    } catch (err) { alert('Failed to delete section: ' + err.message) }
   }
 
   // Undo logic
@@ -272,7 +305,8 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             members={members} onInlineUpdate={handleInlineUpdate}
             draggedTaskId={draggedTaskId} setDraggedTaskId={setDraggedTaskId} onDropOnSection={handleDropOnSection}
             dropTargetId={dropTargetId} setDropTargetId={setDropTargetId} onReorderTask={handleReorderTask}
-            allSections={allSections} onMoveToSection={(taskId, section) => updateTask(supabase, taskId, { section })} />
+            allSections={allSections} onMoveToSection={(taskId, section) => updateTask(supabase, taskId, { section })}
+            onRenameSection={handleRenameSection} onDeleteSection={handleDeleteSection} />
 
           {/* Done section — collapsed by default */}
           {filteredDone.length > 0 && (
@@ -340,7 +374,65 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection }) {
+function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDelete }) {
+  const [showMenu, setShowMenu] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(section)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    if (!showMenu) return
+    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setShowMenu(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showMenu])
+
+  const handleRename = () => {
+    if (editName.trim() && editName !== section) {
+      onRename(section, editName.trim())
+    }
+    setEditing(false)
+  }
+
+  return (
+    <div className="flex items-center gap-1 group/sec">
+      <button onClick={onToggle}
+        className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors flex-1 min-w-0">
+        <span className={`text-gray-400 text-xs transition-transform ${collapsed ? '' : 'rotate-90'}`}>▶</span>
+        {editing ? (
+          <input autoFocus value={editName} onChange={e => setEditName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false) }}
+            onBlur={handleRename}
+            onClick={e => e.stopPropagation()}
+            className="text-sm font-semibold text-gray-900 border border-indigo-300 rounded px-1 py-0 bg-white w-48" />
+        ) : (
+          <span className="text-sm font-semibold text-gray-900">{section}</span>
+        )}
+        <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{taskCount}</span>
+      </button>
+      <div className="relative" ref={menuRef}>
+        <button onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
+          className="text-gray-300 hover:text-gray-500 text-sm px-1.5 py-1 rounded hover:bg-gray-100 opacity-0 group-hover/sec:opacity-100 transition-opacity">
+          ⋯
+        </button>
+        {showMenu && (
+          <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
+            <button onClick={() => { setShowMenu(false); setEditing(true); setEditName(section) }}
+              className="w-full text-left text-xs px-3 py-1.5 hover:bg-gray-50 text-gray-700 flex items-center gap-2">
+              ✏️ Rename
+            </button>
+            <button onClick={() => { setShowMenu(false); onDelete(section) }}
+              className="w-full text-left text-xs px-3 py-1.5 hover:bg-red-50 text-red-600 flex items-center gap-2">
+              🗑 Delete
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection, onRenameSection, onDeleteSection }) {
 
   const handleDragOverTask = (e, taskId) => {
     e.preventDefault()
@@ -362,12 +454,8 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
           <div key={section} className="mb-1"
             onDragOver={e => { e.preventDefault() }}
             onDrop={e => { e.preventDefault(); onDropOnSection(section) }}>
-            <button onClick={() => toggleSection(section)}
-              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors">
-              <span className={`text-gray-400 text-xs transition-transform ${collapsed ? '' : 'rotate-90'}`}>▶</span>
-              <span className="text-sm font-semibold text-gray-900">{section}</span>
-              <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{sectionTasks.length}</span>
-            </button>
+            <SectionHeader section={section} taskCount={sectionTasks.length} collapsed={collapsed}
+              onToggle={() => toggleSection(section)} onRename={onRenameSection} onDelete={onDeleteSection} />
             {!collapsed && (
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2">
                 {sectionTasks.length === 0 && draggedTaskId && (
