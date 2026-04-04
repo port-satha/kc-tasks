@@ -3,10 +3,10 @@ import { useState } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, RECURRENCE_TYPES, WEEKDAYS } from '../lib/data'
 import MemberPicker from './MemberPicker'
 
-export default function AddTaskModal({ members, sections: customSections, onClose, onAdd }) {
+export default function AddTaskModal({ members, sections: customSections, onClose, onAdd, defaultSection }) {
   const sections = customSections && customSections.length > 0 ? customSections : DEFAULT_SECTIONS
   const [form, setForm] = useState({
-    title: '', section: 'Recently assigned', priority: '',
+    title: '', section: defaultSection || sections[0] || 'Recently assigned', priority: '',
     value: '', effort: '', progress: '', due: '', notes: '', assigned_to: null
   })
   const [showRecurrence, setShowRecurrence] = useState(false)

@@ -437,7 +437,8 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             onRenameSection={handleRenameSection} onDeleteSection={handleDeleteSection}
             onReorderSections={handleReorderSections}
             selectedTaskIds={selectedTaskIds} onSelectTask={handleSelectTask}
-            onToggleChildDone={handleToggleChildDone} onInlineUpdateChild={handleInlineUpdateChild} />
+            onToggleChildDone={handleToggleChildDone} onInlineUpdateChild={handleInlineUpdateChild}
+            onAddToSection={(section) => setShowAdd(section)} />
 
           {/* Done section — collapsed by default */}
           {filteredDone.length > 0 && (
@@ -500,7 +501,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       )}
 
       {activeTask && <TaskModal task={activeTask} members={members} sections={allSections} onClose={() => setActiveTask(null)} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />}
-      {showAdd && <AddTaskModal members={members} sections={allSections} onClose={() => setShowAdd(false)} onAdd={handleAddTask} />}
+      {showAdd && <AddTaskModal members={members} sections={allSections} onClose={() => setShowAdd(false)} onAdd={handleAddTask} defaultSection={typeof showAdd === 'string' ? showAdd : undefined} />}
     </div>
   )
 }
@@ -566,7 +567,7 @@ function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, membe
   )
 }
 
-function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDelete, isDragOver, onSectionDragStart, onSectionDragOver, onSectionDrop, onSectionDragEnd }) {
+function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDelete, onAddToSection, isDragOver, onSectionDragStart, onSectionDragOver, onSectionDrop, onSectionDragEnd }) {
   const [showMenu, setShowMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(section)
@@ -610,6 +611,11 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
         )}
         <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{taskCount}</span>
       </button>
+      <button onClick={(e) => { e.stopPropagation(); onAddToSection(section) }}
+        className="text-gray-300 hover:text-indigo-600 text-sm px-1 py-0.5 rounded hover:bg-gray-100 opacity-0 group-hover/sec:opacity-100 transition-opacity"
+        title="Add a task to this section">
+        +
+      </button>
       <div className="relative" ref={menuRef}>
         <button onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
           className="text-gray-300 hover:text-gray-500 text-sm px-1.5 py-1 rounded hover:bg-gray-100 opacity-0 group-hover/sec:opacity-100 transition-opacity">
@@ -632,7 +638,7 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection, onRenameSection, onDeleteSection, onReorderSections, selectedTaskIds, onSelectTask, onToggleChildDone, onInlineUpdateChild }) {
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection, onRenameSection, onDeleteSection, onReorderSections, selectedTaskIds, onSelectTask, onToggleChildDone, onInlineUpdateChild, onAddToSection }) {
   const [draggedSection, setDraggedSection] = useState(null)
   const [dropTargetSection, setDropTargetSection] = useState(null)
 
@@ -657,7 +663,7 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
             onDragOver={e => { e.preventDefault() }}
             onDrop={e => { e.preventDefault(); onDropOnSection(section) }}>
             <SectionHeader section={section} taskCount={sectionTasks.length} collapsed={collapsed}
-              onToggle={() => toggleSection(section)} onRename={onRenameSection} onDelete={onDeleteSection}
+              onToggle={() => toggleSection(section)} onRename={onRenameSection} onDelete={onDeleteSection} onAddToSection={onAddToSection}
               isDragOver={dropTargetSection === section && draggedSection !== section}
               onSectionDragStart={() => setDraggedSection(section)}
               onSectionDragOver={() => { if (draggedSection && draggedSection !== section) setDropTargetSection(section) }}
