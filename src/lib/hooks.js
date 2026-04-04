@@ -37,20 +37,20 @@ export function useUser() {
   return { user, profile, loading }
 }
 
-export function useTasks(projectId = null) {
+export function useTasks(projectId = null, memberId = null) {
   const supabase = useSupabase()
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchTasks(supabase, { projectId })
+      const data = await fetchTasks(supabase, { projectId, memberId })
       setTasks(data)
     } catch (err) {
       console.error('Failed to load tasks:', err)
     }
     setLoading(false)
-  }, [supabase, projectId])
+  }, [supabase, projectId, memberId])
 
   useEffect(() => {
     load()

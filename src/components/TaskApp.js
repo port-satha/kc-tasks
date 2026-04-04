@@ -2,7 +2,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
 import { useSupabase, useUser, useTasks, useMembers, useSections } from '../lib/hooks'
-import { createTask, updateTask, deleteTask, updateSubtask, createSection, deleteSection, renameSection, createRecurringFollowUp } from '../lib/db'
+import { createTask, updateTask, deleteTask, updateSubtask, createChildTask, createSection, deleteSection, renameSection, createRecurringFollowUp } from '../lib/db'
 import TaskModal from './TaskModal'
 import AddTaskModal from './AddTaskModal'
 import AvatarChip from './AvatarChip'
@@ -10,8 +10,9 @@ import AvatarChip from './AvatarChip'
 export default function TaskApp({ projectId = null, projectName = null, settingsButton = null }) {
   const supabase = useSupabase()
   const { user } = useUser()
-  const { tasks, loading } = useTasks(projectId)
   const { members } = useMembers()
+  const currentMember = members?.find(m => m.profile_id === user?.id)
+  const { tasks, loading } = useTasks(projectId, currentMember?.id)
   const { sections: customSections, sectionObjects, reload: reloadSections } = useSections(projectId, user?.id)
   const [view, setView] = useState('list')
   const [activeTask, setActiveTask] = useState(null)
@@ -191,6 +192,25 @@ export default function TaskApp({ projectId = null, projectName = null, settings
     catch (err) { console.error('Failed to toggle subtask:', err) }
   }, [supabase])
 
+  // Toggle child task done (same as regular task)
+  const handleToggleChildDone = useCallback(async (childTask) => {
+    try {
+      const wasDone = childTask.progress === 'Done'
+      const newProgress = wasDone ? '' : 'Done'
+      await updateTask(supabase, childTask.id, { progress: newProgress })
+      if (!wasDone && childTask.recurrence_rule) {
+        await createRecurringFollowUp(supabase, childTask)
+      }
+    } catch (err) { console.error('Failed to toggle child task:', err) }
+  }, [supabase])
+
+  const handleInlineUpdateChild = useCallback(async (childTask, field, value) => {
+    try {
+      const previousAssignedTo = field === 'assigned_to' ? childTask.assigned_to : null
+      await updateTask(supabase, childTask.id, { [field]: value || null }, { previousAssignedTo })
+    } catch (err) { console.error('Failed to update child task:', err) }
+  }, [supabase])
+
   const handleAddTask = useCallback(async (taskData) => {
     if (!user) return
     try {
@@ -263,11 +283,12 @@ export default function TaskApp({ projectId = null, projectName = null, settings
     setDropTargetId(null)
   }, [supabase, draggedTaskId, tasks])
 
-  // Separate done tasks from active tasks
-  const activeTasks = tasks.filter(t => t.progress !== 'Done')
-  const doneTasks = tasks.filter(t => t.progress === 'Done')
+  // Separate done tasks from active tasks (only top-level, children show nested)
+  const topLevelTasks = tasks.filter(t => !t.parent_task_id || t._isAssignedChild)
+  const activeTasks = topLevelTasks.filter(t => t.progress !== 'Done')
+  const doneTasks = topLevelTasks.filter(t => t.progress === 'Done')
 
-  const filtered = (filterStatus === 'done' ? doneTasks : filterStatus === 'active' ? activeTasks : tasks).filter(t => {
+  const filtered = (filterStatus === 'done' ? doneTasks : filterStatus === 'active' ? activeTasks : topLevelTasks).filter(t => {
     if (filterPriority !== 'all' && t.priority !== filterPriority) return false
     if (filterAssignee !== 'all' && t.assigned_to !== filterAssignee) return false
     if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
@@ -414,7 +435,8 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             allSections={allSections} onMoveToSection={(taskId, section) => updateTask(supabase, taskId, { section })}
             onRenameSection={handleRenameSection} onDeleteSection={handleDeleteSection}
             onReorderSections={handleReorderSections}
-            selectedTaskIds={selectedTaskIds} onSelectTask={handleSelectTask} />
+            selectedTaskIds={selectedTaskIds} onSelectTask={handleSelectTask}
+            onToggleChildDone={handleToggleChildDone} onInlineUpdateChild={handleInlineUpdateChild} />
 
           {/* Done section — collapsed by default */}
           {filteredDone.length > 0 && (
@@ -548,7 +570,7 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection, onRenameSection, onDeleteSection, onReorderSections, selectedTaskIds, onSelectTask }) {
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection, onRenameSection, onDeleteSection, onReorderSections, selectedTaskIds, onSelectTask, onToggleChildDone, onInlineUpdateChild }) {
   const [draggedSection, setDraggedSection] = useState(null)
   const [dropTargetSection, setDropTargetSection] = useState(null)
 
@@ -600,13 +622,25 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
                       <div className="h-0.5 bg-indigo-500 mx-4 rounded-full" />
                     )}
                     <TaskRow task={t} onOpen={onOpen} isOverdue={isOverdue} onToggleDone={toggleTaskDone}
-                      hasSubtasks={t.subtasks && t.subtasks.length > 0}
+                      hasSubtasks={(t.children && t.children.length > 0) || (t.subtasks && t.subtasks.length > 0)}
                       isExpanded={expandedTasks[t.id]} onToggleExpand={() => toggleTaskExpand(t.id)}
                       members={members} onInlineUpdate={onInlineUpdate}
                       isDragging={draggedTaskId === t.id}
                       allSections={allSections} currentSection={section} onMoveToSection={onMoveToSection}
-                      isSelected={selectedTaskIds?.has(t.id)} onSelect={onSelectTask} />
-                    {expandedTasks[t.id] && t.subtasks && t.subtasks.length > 0 && (
+                      isSelected={selectedTaskIds?.has(t.id)} onSelect={onSelectTask}
+                      parentTask={t._parentTask} />
+                    {/* Child tasks (Asana-style subtasks) - full inline editing */}
+                    {expandedTasks[t.id] && t.children && t.children.length > 0 && (
+                      <div className="bg-gray-50/80 border-t border-gray-100">
+                        {t.children.map(child => (
+                          <ChildTaskRow key={child.id} task={child} parentTask={t} onOpen={onOpen} isOverdue={isOverdue}
+                            onToggleDone={onToggleChildDone} members={members} onInlineUpdate={onInlineUpdateChild}
+                            isSelected={selectedTaskIds?.has(child.id)} onSelect={onSelectTask} />
+                        ))}
+                      </div>
+                    )}
+                    {/* Legacy subtasks (old format) - simple display */}
+                    {expandedTasks[t.id] && (!t.children || t.children.length === 0) && t.subtasks && t.subtasks.length > 0 && (
                       <div className="bg-gray-50 border-t border-gray-100">
                         {t.subtasks.map(st => (
                           <div key={st.id} className="flex items-center gap-2 pl-12 pr-4 py-1.5 border-b border-gray-100 last:border-0 hover:bg-gray-100">
@@ -757,12 +791,15 @@ function DatePicker({ value, onChange }) {
   )
 }
 
-function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection, isSelected, onSelect }) {
+function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection, isSelected, onSelect, parentTask }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   const moveRef = useRef(null)
   const overdue = isOverdue(task)
-  const subtaskCount = task.subtasks ? task.subtasks.length : 0
-  const subtaskDone = task.subtasks ? task.subtasks.filter(s => s.done).length : 0
+  // Count children (new-style) + legacy subtasks
+  const childCount = task.children ? task.children.length : 0
+  const childDone = task.children ? task.children.filter(c => c.progress === 'Done').length : 0
+  const subtaskCount = childCount > 0 ? childCount : (task.subtasks ? task.subtasks.length : 0)
+  const subtaskDone = childCount > 0 ? childDone : (task.subtasks ? task.subtasks.filter(s => s.done).length : 0)
 
   useEffect(() => {
     if (!showMoveMenu) return
@@ -806,8 +843,74 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
           className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${task.progress === 'Done' ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
           {task.progress === 'Done' && <span className="text-white text-xs">✓</span>}
         </button>
-        <span onClick={(e) => { if (!e.ctrlKey && !e.metaKey) onOpen(task) }} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
+        <div className="flex flex-col min-w-0">
+          {task._parentTask && (
+            <span className="text-[10px] text-gray-400 truncate">{task._parentTask.title} ›</span>
+          )}
+          <span onClick={(e) => { if (!e.ctrlKey && !e.metaKey) onOpen(task) }} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
+        </div>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
+      </div>
+      <DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} />
+      <select {...stopDrag}
+        value={task.priority || ''}
+        onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
+        className={`${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+      </select>
+      <select {...stopDrag}
+        value={task.value || ''}
+        onChange={e => onInlineUpdate(task, 'value', e.target.value)}
+        className={`${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+      </select>
+      <select {...stopDrag}
+        value={task.effort || ''}
+        onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
+        className={`${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
+      </select>
+      <select {...stopDrag}
+        value={task.progress || ''}
+        onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
+        className={`${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
+      </select>
+      <select {...stopDrag}
+        value={task.assigned_to || ''}
+        onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
+        className={`${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
+      >
+        <option value="">—</option>
+        {(members || []).map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, members, onInlineUpdate, isSelected, onSelect }) {
+  const overdue = isOverdue(task)
+  const selectClass = "text-[11px] bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full"
+  const stopDrag = { onMouseDown: e => e.stopPropagation(), onDragStart: e => e.stopPropagation(), draggable: false }
+
+  return (
+    <div onClick={e => onSelect?.(task.id, e)}
+      className={`grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 pl-10 pr-4 py-1.5 border-b border-gray-100 last:border-0 hover:bg-gray-100 items-center group/row ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="w-4 flex-shrink-0 text-gray-300 text-[10px]">↳</span>
+        <button onClick={(e) => { e.stopPropagation(); onToggleDone(task) }}
+          className={`w-3.5 h-3.5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${task.progress === 'Done' ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
+          {task.progress === 'Done' && <span className="text-white text-[8px]">✓</span>}
+        </button>
+        <span onClick={(e) => { if (!e.ctrlKey && !e.metaKey) onOpen(task) }} className={`text-xs truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{task.title}</span>
       </div>
       <DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} />
       <select {...stopDrag}
@@ -882,8 +985,10 @@ function BoardView({ columns, onOpen, isOverdue }) {
 function BoardCard({ task, onOpen, isOverdue }) {
   const due = task.due ? new Date(task.due) : null
   const overdue = isOverdue(task)
-  const subtaskCount = task.subtasks ? task.subtasks.length : 0
-  const subtaskDone = task.subtasks ? task.subtasks.filter(s => s.done).length : 0
+  const childCount = task.children ? task.children.length : 0
+  const childDone = task.children ? task.children.filter(c => c.progress === 'Done').length : 0
+  const subtaskCount = childCount > 0 ? childCount : (task.subtasks ? task.subtasks.length : 0)
+  const subtaskDone = childCount > 0 ? childDone : (task.subtasks ? task.subtasks.filter(s => s.done).length : 0)
 
   return (
     <div onClick={() => onOpen(task)} className="bg-white border border-gray-200 rounded-xl p-3 cursor-pointer hover:border-gray-300 hover:shadow-sm transition-all">

@@ -94,15 +94,18 @@ create table public.tasks (
   assigned_to uuid references public.members(id),
   created_by uuid references public.profiles(id) not null,
   sort_order integer default 0,
+  parent_task_id uuid references public.tasks(id) on delete cascade,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+create index idx_tasks_parent_task_id on public.tasks(parent_task_id);
 
 alter table public.tasks enable row level security;
 -- Personal tasks (no project): only creator can see
 create policy "View own personal tasks" on public.tasks for select to authenticated
   using (
-    (project_id is null and created_by = auth.uid())
+    (project_id is null and parent_task_id is null and created_by = auth.uid())
     or
     (project_id is not null and exists (
       select 1 from public.projects p where p.id = project_id
@@ -111,6 +114,14 @@ create policy "View own personal tasks" on public.tasks for select to authentica
         join public.members m on m.id = pm.member_id
         where pm.project_id = p.id and m.profile_id = auth.uid()
       ))
+    ))
+    or
+    (parent_task_id is not null and exists (
+      select 1 from public.tasks parent where parent.id = parent_task_id
+    ))
+    or
+    (assigned_to is not null and exists (
+      select 1 from public.members m where m.id = assigned_to and m.profile_id = auth.uid()
     ))
   );
 create policy "Users can create tasks" on public.tasks for insert to authenticated with check (created_by = auth.uid());

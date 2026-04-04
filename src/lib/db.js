@@ -73,7 +73,7 @@ export async function createRecurringFollowUp(supabase, task) {
 }
 
 // ===== TASKS =====
-export async function fetchTasks(supabase, { projectId = null } = {}) {
+export async function fetchTasks(supabase, { projectId = null, memberId = null } = {}) {
   let query = supabase
     .from('tasks')
     .select('*, subtasks(*)')
@@ -89,11 +89,67 @@ export async function fetchTasks(supabase, { projectId = null } = {}) {
   const { data, error } = await query
   if (error) throw error
 
-  // Sort subtasks
-  return (data || []).map(t => ({
-    ...t,
-    subtasks: (t.subtasks || []).sort((a, b) => a.sort_order - b.sort_order)
-  }))
+  const all = data || []
+
+  // Build parent-child relationships
+  const childMap = {} // parent_task_id -> [child tasks]
+  const topLevel = []
+
+  all.forEach(t => {
+    // Sort old subtasks (backward compat)
+    t.subtasks = (t.subtasks || []).sort((a, b) => a.sort_order - b.sort_order)
+    if (t.parent_task_id) {
+      if (!childMap[t.parent_task_id]) childMap[t.parent_task_id] = []
+      childMap[t.parent_task_id].push(t)
+    } else {
+      topLevel.push(t)
+    }
+  })
+
+  // Attach children to their parent tasks
+  topLevel.forEach(t => {
+    t.children = (childMap[t.id] || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+  })
+
+  // Also fetch child tasks assigned to this member from OTHER projects (for personal view)
+  if (!projectId && memberId) {
+    try {
+      const { data: assignedChildren } = await supabase
+        .from('tasks')
+        .select('*, subtasks(*)')
+        .eq('assigned_to', memberId)
+        .not('parent_task_id', 'is', null)
+        .not('project_id', 'is', null)
+        .order('sort_order', { ascending: true })
+
+      if (assignedChildren && assignedChildren.length > 0) {
+        // Fetch parent task info for breadcrumb
+        const parentIds = [...new Set(assignedChildren.map(c => c.parent_task_id))]
+        const { data: parents } = await supabase
+          .from('tasks')
+          .select('id, title, project_id')
+          .in('id', parentIds)
+
+        const parentMap = {}
+        if (parents) parents.forEach(p => { parentMap[p.id] = p })
+
+        assignedChildren.forEach(c => {
+          c.subtasks = (c.subtasks || []).sort((a, b) => a.sort_order - b.sort_order)
+          c.children = []
+          c._parentTask = parentMap[c.parent_task_id] || null
+          c._isAssignedChild = true
+          // Check it's not already in topLevel
+          if (!topLevel.find(t => t.id === c.id)) {
+            topLevel.push(c)
+          }
+        })
+      }
+    } catch (err) {
+      console.error('Failed to load assigned child tasks:', err)
+    }
+  }
+
+  return topLevel
 }
 
 export async function createTask(supabase, taskData) {
@@ -160,7 +216,51 @@ export async function deleteTask(supabase, taskId) {
   if (error) throw error
 }
 
-// ===== SUBTASKS =====
+// ===== CHILD TASKS (Asana-style subtasks) =====
+export async function createChildTask(supabase, parentTaskId, { title, created_by, project_id, section }) {
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert({
+      title,
+      parent_task_id: parentTaskId,
+      created_by,
+      project_id: project_id || null,
+      section: section || 'Recently assigned',
+      sort_order: 0
+    })
+    .select('*, subtasks(*)')
+    .single()
+  if (error) throw error
+  data.children = []
+  return data
+}
+
+export async function fetchChildTasks(supabase, parentTaskId) {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*, subtasks(*)')
+    .eq('parent_task_id', parentTaskId)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data || []).map(t => ({
+    ...t,
+    subtasks: (t.subtasks || []).sort((a, b) => a.sort_order - b.sort_order),
+    children: []
+  }))
+}
+
+export async function fetchParentTask(supabase, taskId) {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('id, title, project_id')
+    .eq('id', taskId)
+    .single()
+  if (error) return null
+  return data
+}
+
+// ===== SUBTASKS (legacy) =====
 export async function createSubtask(supabase, taskId, title) {
   const { data, error } = await supabase
     .from('subtasks')
