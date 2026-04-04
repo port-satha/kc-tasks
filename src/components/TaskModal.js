@@ -23,6 +23,8 @@ export default function TaskModal({ task, members, sections: customSections, onC
   const [newSubtask, setNewSubtask] = useState('')
   const [childTasks, setChildTasks] = useState(task.children || [])
   const [parentTaskInfo, setParentTaskInfo] = useState(task._parentTask || null)
+  const [title, setTitle] = useState(task.title || '')
+  const [editingTitle, setEditingTitle] = useState(false)
   const [aiOutput, setAiOutput] = useState('')
 
   useEffect(() => {
@@ -130,11 +132,20 @@ export default function TaskModal({ task, members, sections: customSections, onC
       <div className="bg-white sm:rounded-2xl border border-gray-200 w-full sm:w-[420px] h-full sm:h-auto sm:max-h-[85vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="p-5">
           <div className="flex items-start justify-between mb-1">
-            <div className="pr-4">
+            <div className="pr-4 flex-1 min-w-0">
               {parentTaskInfo && (
                 <p className="text-[11px] text-indigo-500 mb-0.5">{parentTaskInfo.title} ›</p>
               )}
-              <h2 className="text-base font-semibold text-gray-900 leading-snug">{task.title}</h2>
+              {editingTitle ? (
+                <input autoFocus value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  onBlur={() => { setEditingTitle(false); if (title.trim() && title !== task.title) saveField('title', title.trim()) }}
+                  onKeyDown={e => { if (e.key === 'Enter') { setEditingTitle(false); if (title.trim() && title !== task.title) saveField('title', title.trim()) } if (e.key === 'Escape') { setTitle(task.title); setEditingTitle(false) } }}
+                  className="text-base font-semibold text-gray-900 leading-snug w-full border border-indigo-300 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200" />
+              ) : (
+                <h2 onClick={() => setEditingTitle(true)}
+                  className="text-base font-semibold text-gray-900 leading-snug cursor-text hover:bg-gray-100 rounded px-1 -mx-1 transition-colors">{title}</h2>
+              )}
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none flex-shrink-0">×</button>
           </div>

@@ -861,6 +861,8 @@ function DatePicker({ value, onChange }) {
 
 function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection, isSelected, onSelect, parentTask }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleValue, setTitleValue] = useState(task.title)
   const moveRef = useRef(null)
   const overdue = isOverdue(task)
   // Count children (new-style) + legacy subtasks
@@ -915,7 +917,19 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
           {task._parentTask && (
             <span className="text-[10px] text-gray-400 truncate">{task._parentTask.title} ›</span>
           )}
-          <span onClick={(e) => { if (!e.ctrlKey && !e.metaKey) onOpen(task) }} className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
+          {editingTitle ? (
+            <input autoFocus value={titleValue}
+              onChange={e => setTitleValue(e.target.value)}
+              onBlur={() => { setEditingTitle(false); if (titleValue.trim() && titleValue !== task.title) onInlineUpdate(task, 'title', titleValue.trim()) }}
+              onKeyDown={e => { if (e.key === 'Enter') { setEditingTitle(false); if (titleValue.trim() && titleValue !== task.title) onInlineUpdate(task, 'title', titleValue.trim()) } if (e.key === 'Escape') { setTitleValue(task.title); setEditingTitle(false) } }}
+              onClick={e => e.stopPropagation()}
+              {...{ onMouseDown: e => e.stopPropagation(), onDragStart: e => e.stopPropagation(), draggable: false }}
+              className="text-sm text-gray-900 border border-indigo-300 rounded px-1 py-0 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200 w-full" />
+          ) : (
+            <span onClick={(e) => { if (!e.ctrlKey && !e.metaKey) onOpen(task) }}
+              onDoubleClick={(e) => { e.stopPropagation(); setEditingTitle(true) }}
+              className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
+          )}
         </div>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
