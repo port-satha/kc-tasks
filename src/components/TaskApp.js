@@ -395,6 +395,9 @@ export default function TaskApp({ projectId = null, projectName = null, settings
                     {members.map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
                   </select>
                 )}
+                <input type="date" onChange={e => { if (e.target.value) { bulkUpdate('due', e.target.value); e.target.value = '' } }}
+                  className="text-xs bg-indigo-500 text-white border border-indigo-400 rounded px-2 py-1 cursor-pointer [color-scheme:dark]"
+                  title="Set due date" />
                 <button onClick={bulkDone} className="text-xs bg-green-500 hover:bg-green-600 text-white rounded px-2 py-1">✓ Done</button>
                 <button onClick={bulkDelete} className="text-xs bg-red-500 hover:bg-red-600 text-white rounded px-2 py-1">🗑 Delete</button>
               </div>
