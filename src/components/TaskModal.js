@@ -6,7 +6,7 @@ import { createSubtask, updateSubtask, deleteSubtask, updateTask, deleteTask as 
 import MemberPicker from './MemberPicker'
 import TaskComments from './TaskComments'
 
-export default function TaskModal({ task, members, sections: customSections, onClose, onUpdate, onDelete }) {
+export default function TaskModal({ task, members, sections: customSections, onClose, onUpdate, onDelete, onNavigate }) {
   const sectionList = customSections && customSections.length > 0 ? customSections : DEFAULT_SECTIONS
   const supabase = useSupabase()
   const { user } = useUser()
@@ -134,7 +134,12 @@ export default function TaskModal({ task, members, sections: customSections, onC
           <div className="flex items-start justify-between mb-1">
             <div className="pr-4 flex-1 min-w-0">
               {parentTaskInfo && (
-                <p className="text-[11px] text-indigo-500 mb-0.5">{parentTaskInfo.title} ›</p>
+                <p className="text-[11px] text-indigo-500 mb-0.5">
+                  <button onClick={() => onNavigate && onNavigate({ ...parentTaskInfo, id: task.parent_task_id })}
+                    className="hover:underline hover:text-indigo-700 transition-colors">
+                    {parentTaskInfo.title}
+                  </button> ›
+                </p>
               )}
               {editingTitle ? (
                 <input autoFocus value={title}
@@ -365,8 +370,8 @@ export default function TaskModal({ task, members, sections: customSections, onC
                           className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${child.progress === 'Done' ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
                           {child.progress === 'Done' && <span className="text-white text-[9px]">✓</span>}
                         </button>
-                        <span onClick={() => onClose() || setTimeout(() => onUpdate && onUpdate(child), 100)}
-                          className={`text-xs flex-1 cursor-pointer hover:text-indigo-600 ${child.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{child.title}</span>
+                        <span onClick={() => onNavigate && onNavigate(child)}
+                          className={`text-xs flex-1 cursor-pointer hover:text-indigo-600 hover:underline ${child.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{child.title}</span>
                         <button onClick={() => handleDeleteChild(child.id)}
                           className="text-gray-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 flex-shrink-0">×</button>
                       </div>

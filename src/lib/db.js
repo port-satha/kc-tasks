@@ -111,32 +111,45 @@ export async function fetchTasks(supabase, { projectId = null, memberId = null }
     t.children = (childMap[t.id] || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
   })
 
-  // Also fetch child tasks assigned to this member from OTHER projects (for personal view)
+  // Fetch all tasks assigned to this member from projects (for "My Tasks" view)
+  // This includes both top-level tasks and child tasks (subtasks) assigned to you
   if (!projectId && memberId) {
     try {
-      const { data: assignedChildren } = await supabase
+      const { data: assignedTasks } = await supabase
         .from('tasks')
         .select('*, subtasks(*)')
         .eq('assigned_to', memberId)
-        .not('parent_task_id', 'is', null)
         .not('project_id', 'is', null)
         .order('sort_order', { ascending: true })
 
-      if (assignedChildren && assignedChildren.length > 0) {
-        // Fetch parent task info for breadcrumb
-        const parentIds = [...new Set(assignedChildren.map(c => c.parent_task_id))]
-        const { data: parents } = await supabase
-          .from('tasks')
-          .select('id, title, project_id')
-          .in('id', parentIds)
-
+      if (assignedTasks && assignedTasks.length > 0) {
+        // Fetch parent task info for breadcrumbs (for child tasks)
+        const parentIds = [...new Set(assignedTasks.filter(c => c.parent_task_id).map(c => c.parent_task_id))]
         const parentMap = {}
-        if (parents) parents.forEach(p => { parentMap[p.id] = p })
+        if (parentIds.length > 0) {
+          const { data: parents } = await supabase
+            .from('tasks')
+            .select('id, title, project_id')
+            .in('id', parentIds)
+          if (parents) parents.forEach(p => { parentMap[p.id] = p })
+        }
 
-        assignedChildren.forEach(c => {
+        // Fetch project names for context
+        const projectIds = [...new Set(assignedTasks.map(c => c.project_id).filter(Boolean))]
+        const projectMap = {}
+        if (projectIds.length > 0) {
+          const { data: projs } = await supabase
+            .from('projects')
+            .select('id, name')
+            .in('id', projectIds)
+          if (projs) projs.forEach(p => { projectMap[p.id] = p })
+        }
+
+        assignedTasks.forEach(c => {
           c.subtasks = (c.subtasks || []).sort((a, b) => a.sort_order - b.sort_order)
           c.children = []
           c._parentTask = parentMap[c.parent_task_id] || null
+          c._project = projectMap[c.project_id] || null
           c._isAssignedChild = true
           // Check it's not already in topLevel
           if (!topLevel.find(t => t.id === c.id)) {
@@ -145,7 +158,7 @@ export async function fetchTasks(supabase, { projectId = null, memberId = null }
         })
       }
     } catch (err) {
-      console.error('Failed to load assigned child tasks:', err)
+      console.error('Failed to load assigned tasks:', err)
     }
   }
 
@@ -171,7 +184,7 @@ export async function createTask(supabase, taskData) {
 }
 
 export async function updateTask(supabase, taskId, updates, { previousAssignedTo = null } = {}) {
-  const { assigned_member, subtasks, children, _parentTask, _isAssignedChild, ...cleanUpdates } = updates
+  const { assigned_member, subtasks, children, _parentTask, _isAssignedChild, _project, ...cleanUpdates } = updates
   // Clean empty strings to null for date/enum fields
   const nullIfEmpty = ['due', 'priority', 'value', 'effort', 'progress', 'assigned_to']
   nullIfEmpty.forEach(f => { if (f in cleanUpdates && cleanUpdates[f] === '') cleanUpdates[f] = null })
@@ -248,6 +261,18 @@ export async function fetchChildTasks(supabase, parentTaskId) {
     subtasks: (t.subtasks || []).sort((a, b) => a.sort_order - b.sort_order),
     children: []
   }))
+}
+
+export async function fetchTaskById(supabase, taskId) {
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*, subtasks(*)')
+    .eq('id', taskId)
+    .single()
+  if (error) return null
+  data.subtasks = (data.subtasks || []).sort((a, b) => a.sort_order - b.sort_order)
+  data.children = []
+  return data
 }
 
 export async function fetchParentTask(supabase, taskId) {

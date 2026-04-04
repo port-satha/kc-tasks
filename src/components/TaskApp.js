@@ -2,7 +2,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
 import { useSupabase, useUser, useTasks, useMembers, useSections } from '../lib/hooks'
-import { createTask, updateTask, deleteTask, updateSubtask, createChildTask, createSection, deleteSection, renameSection, createRecurringFollowUp } from '../lib/db'
+import { createTask, updateTask, deleteTask, updateSubtask, createChildTask, createSection, deleteSection, renameSection, createRecurringFollowUp, fetchTaskById } from '../lib/db'
 import TaskModal from './TaskModal'
 import AddTaskModal from './AddTaskModal'
 import AvatarChip from './AvatarChip'
@@ -230,6 +230,13 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const handleDeleteTask = useCallback(async (id) => {
     try { await deleteTask(supabase, id); setActiveTask(null) }
     catch (err) { console.error('Failed to delete task:', err) }
+  }, [supabase])
+
+  const handleNavigateToTask = useCallback(async (taskRef) => {
+    try {
+      const fullTask = await fetchTaskById(supabase, taskRef.id)
+      if (fullTask) setActiveTask(fullTask)
+    } catch (err) { console.error('Failed to navigate to task:', err) }
   }, [supabase])
 
   const handleInlineUpdate = useCallback(async (task, field, value) => {
@@ -500,7 +507,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
         </div>
       )}
 
-      {activeTask && <TaskModal task={activeTask} members={members} sections={allSections} onClose={() => setActiveTask(null)} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />}
+      {activeTask && <TaskModal task={activeTask} members={members} sections={allSections} onClose={() => setActiveTask(null)} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onNavigate={handleNavigateToTask} />}
       {showAdd && <AddTaskModal members={members} sections={allSections} onClose={() => setShowAdd(false)} onAdd={handleAddTask} defaultSection={typeof showAdd === 'string' ? showAdd : undefined} />}
     </div>
   )
@@ -914,8 +921,12 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
           {task.progress === 'Done' && <span className="text-white text-xs">✓</span>}
         </button>
         <div className="flex flex-col min-w-0">
-          {task._parentTask && (
-            <span className="text-[10px] text-gray-400 truncate">{task._parentTask.title} ›</span>
+          {(task._parentTask || task._project) && (
+            <span className="text-[10px] text-gray-400 truncate">
+              {task._project && <span className="text-indigo-400">{task._project.name}</span>}
+              {task._project && task._parentTask && ' · '}
+              {task._parentTask && <span>{task._parentTask.title} ›</span>}
+            </span>
           )}
           {editingTitle ? (
             <input autoFocus value={titleValue}
