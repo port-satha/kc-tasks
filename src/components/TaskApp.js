@@ -327,21 +327,22 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 px-4 flex items-center gap-3 h-12 sticky top-0 z-10">
-        <span className="text-sm font-semibold text-gray-900">{projectName || 'My tasks'}</span>
+      <div className="bg-white border-b border-gray-200 px-4 pl-14 md:pl-4 flex items-center gap-3 h-12 sticky top-0 z-10">
+        <span className="text-sm font-semibold text-gray-900 truncate">{projectName || 'My tasks'}</span>
         {settingsButton}
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-gray-400">{filtered.length} tasks</span>
+        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+          <span className="text-xs text-gray-400 hidden sm:inline">{filtered.length} tasks</span>
           <button onClick={() => setShowAdd(true)}
             className="text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center gap-1">
-            <span>+</span> Add task
+            <span>+</span> <span className="hidden sm:inline">Add task</span>
           </button>
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-3 flex-wrap">
-        <div className="flex border border-gray-200 rounded-md overflow-hidden">
+      {/* Toolbar */}
+      <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-2 sm:gap-3 flex-wrap overflow-x-auto">
+        <div className="flex border border-gray-200 rounded-md overflow-hidden flex-shrink-0">
           {['list', 'board'].map(v => (
             <button key={v} onClick={() => setView(v)}
               className={`text-xs px-3 py-1.5 transition-colors ${view === v ? 'bg-gray-100 text-gray-900 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}>
@@ -349,16 +350,16 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             </button>
           ))}
         </div>
-        <div className="flex gap-1 items-center">
-          <span className="text-xs text-gray-400 mr-1">Status:</span>
+        <div className="flex gap-1 items-center flex-shrink-0">
+          <span className="text-xs text-gray-400 mr-1 hidden sm:inline">Status:</span>
           {[['all', 'All'], ['active', 'Active'], ['done', 'Done']].map(([key, label]) => (
             <button key={key} onClick={() => setFilterStatus(key)}
-              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${filterStatus === key ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+              className={`text-xs px-2 sm:px-2.5 py-1 rounded-full border transition-colors ${filterStatus === key ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
               {label}
             </button>
           ))}
         </div>
-        <div className="flex gap-1 items-center">
+        <div className="hidden sm:flex gap-1 items-center flex-shrink-0">
           <span className="text-xs text-gray-400 mr-1">Priority:</span>
           {['all', ...PRIORITIES].map(p => (
             <button key={p} onClick={() => setFilterPriority(p)}
@@ -368,7 +369,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
           ))}
         </div>
         {members.length > 0 && (
-          <div className="flex gap-1 items-center">
+          <div className="hidden md:flex gap-1 items-center flex-shrink-0">
             <span className="text-xs text-gray-400 mr-1">Assignee:</span>
             <button onClick={() => setFilterAssignee('all')}
               className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${filterAssignee === 'all' ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>All</button>
@@ -380,9 +381,9 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             ))}
           </div>
         )}
-        <div className="ml-auto">
-          <input type="text" placeholder="Search tasks..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            className="text-xs border border-gray-200 rounded-md px-3 py-1.5 w-48 bg-white text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+        <div className="ml-auto flex-shrink-0">
+          <input type="text" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            className="text-xs border border-gray-200 rounded-md px-3 py-1.5 w-32 sm:w-48 bg-white text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
         </div>
       </div>
 
@@ -511,7 +512,7 @@ function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, membe
 
   return (
     <div onClick={e => onSelect?.(task.id, e)}
-      className={`grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 pl-10 pr-4 py-1.5 border-b border-gray-100 last:border-0 hover:bg-gray-100 items-center group/row ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
+      className={`grid grid-cols-[1fr_80px] sm:grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 pl-6 sm:pl-10 pr-4 py-1.5 border-b border-gray-100 last:border-0 hover:bg-gray-100 items-center group/row ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
       <div className="flex items-center gap-2 min-w-0">
         <span className="w-4 flex-shrink-0 text-gray-300 text-[10px]">↳</span>
         <button onClick={(e) => { e.stopPropagation(); onToggleDone(task) }}
@@ -524,7 +525,7 @@ function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, membe
       <select {...stopDrag}
         value={task.priority || ''}
         onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
-        className={`${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
@@ -532,7 +533,7 @@ function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, membe
       <select {...stopDrag}
         value={task.value || ''}
         onChange={e => onInlineUpdate(task, 'value', e.target.value)}
-        className={`${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
@@ -540,7 +541,7 @@ function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, membe
       <select {...stopDrag}
         value={task.effort || ''}
         onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
-        className={`${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
@@ -548,7 +549,7 @@ function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, membe
       <select {...stopDrag}
         value={task.progress || ''}
         onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
-        className={`${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -556,7 +557,7 @@ function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, membe
       <select {...stopDrag}
         value={task.assigned_to || ''}
         onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
-        className={`${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {(members || []).map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
@@ -645,8 +646,8 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
 
   return (
     <div className="p-4 flex-1">
-      <div className="grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1 bg-gray-50 sticky top-12 z-[5]">
-        <span>Name</span><span>Due date</span><span>Priority</span><span>Value</span><span>Effort level</span><span>Task Progress</span><span>Assignee</span>
+      <div className="grid grid-cols-[1fr_80px] sm:grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1 bg-gray-50 sticky top-12 z-[5]">
+        <span>Name</span><span>Due date</span><span className="hidden sm:block">Priority</span><span className="hidden sm:block">Value</span><span className="hidden sm:block">Effort level</span><span className="hidden sm:block">Task Progress</span><span className="hidden sm:block">Assignee</span>
       </div>
       {Object.entries(grouped).map(([section, sectionTasks]) => {
         if (sectionTasks.length === 0 && !draggedTaskId) return null
@@ -878,9 +879,9 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
 
   return (
     <div onClick={e => onSelect?.(task.id, e)}
-      className={`grid grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''} ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
+      className={`grid grid-cols-[1fr_80px] sm:grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''} ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
       <div className="flex items-center gap-2 min-w-0">
-        <div className="relative flex-shrink-0" ref={moveRef}>
+        <div className="relative flex-shrink-0 hidden sm:block" ref={moveRef}>
           <span className="cursor-grab text-gray-300 hover:text-gray-500 text-xs select-none" title="Drag to move"
             onClick={(e) => { e.stopPropagation(); if (otherSections.length > 0) setShowMoveMenu(!showMoveMenu) }}>⠿</span>
           {showMoveMenu && otherSections.length > 0 && (
@@ -916,7 +917,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
       <select {...stopDrag}
         value={task.priority || ''}
         onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
-        className={`${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
@@ -924,7 +925,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
       <select {...stopDrag}
         value={task.value || ''}
         onChange={e => onInlineUpdate(task, 'value', e.target.value)}
-        className={`${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
@@ -932,7 +933,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
       <select {...stopDrag}
         value={task.effort || ''}
         onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
-        className={`${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
@@ -940,7 +941,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
       <select {...stopDrag}
         value={task.progress || ''}
         onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
-        className={`${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -948,7 +949,7 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
       <select {...stopDrag}
         value={task.assigned_to || ''}
         onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
-        className={`${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
+        className={`hidden sm:block ${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
       >
         <option value="">—</option>
         {(members || []).map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
