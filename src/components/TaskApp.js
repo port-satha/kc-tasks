@@ -612,13 +612,13 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
         <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{taskCount}</span>
       </button>
       <button onClick={(e) => { e.stopPropagation(); onAddToSection(section) }}
-        className="text-gray-300 hover:text-indigo-600 text-sm px-1 py-0.5 rounded hover:bg-gray-100 opacity-0 group-hover/sec:opacity-100 transition-opacity"
+        className="text-gray-400 hover:text-indigo-600 text-sm px-1 py-0.5 rounded hover:bg-gray-100 sm:opacity-0 sm:group-hover/sec:opacity-100 transition-opacity"
         title="Add a task to this section">
         +
       </button>
       <div className="relative" ref={menuRef}>
         <button onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
-          className="text-gray-300 hover:text-gray-500 text-sm px-1.5 py-1 rounded hover:bg-gray-100 opacity-0 group-hover/sec:opacity-100 transition-opacity">
+          className="text-gray-400 hover:text-gray-500 text-sm px-1.5 py-1 rounded hover:bg-gray-100 sm:opacity-0 sm:group-hover/sec:opacity-100 transition-opacity">
           ⋯
         </button>
         {showMenu && (
