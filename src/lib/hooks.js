@@ -168,7 +168,7 @@ export function useSections(projectId = null, ownerId = null) {
   const load = useCallback(async () => {
     try {
       const data = await fetchSections(supabase, { projectId, ownerId })
-      setSections(data.map(s => s.name))
+      setSections(data)
     } catch (err) {
       console.error('Failed to load sections:', err)
       setSections([])
@@ -178,7 +178,8 @@ export function useSections(projectId = null, ownerId = null) {
 
   useEffect(() => { load() }, [load])
 
-  return { sections, loading, reload: load }
+  // Return both names (for backward compat) and full objects (for rename/delete)
+  return { sections: sections.map(s => s.name), sectionObjects: sections, loading, reload: load }
 }
 
 export function useComments(taskId) {
