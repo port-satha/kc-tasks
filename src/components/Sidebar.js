@@ -7,6 +7,7 @@ import NotificationBell from './NotificationBell'
 
 export default function Sidebar({ user, profile, projects }) {
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
   const supabase = useSupabase()
@@ -17,9 +18,14 @@ export default function Sidebar({ user, profile, projects }) {
     router.refresh()
   }
 
+  const navigate = (href) => {
+    router.push(href)
+    setMobileOpen(false)
+  }
+
   const navItem = (href, label, icon, isActive) => (
     <button
-      onClick={() => router.push(href)}
+      onClick={() => navigate(href)}
       className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
         isActive ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-600 hover:bg-gray-100'
       }`}
@@ -29,8 +35,8 @@ export default function Sidebar({ user, profile, projects }) {
     </button>
   )
 
-  return (
-    <div className={`bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0 transition-all ${collapsed ? 'w-14' : 'w-56'}`}>
+  const sidebarContent = (
+    <>
       {/* Header */}
       <div className="px-3 py-3 border-b border-gray-200 flex items-center justify-between">
         {!collapsed && (
@@ -43,8 +49,13 @@ export default function Sidebar({ user, profile, projects }) {
         )}
         <div className="flex items-center gap-1">
           {user?.id && <NotificationBell userId={user.id} />}
-          <button onClick={() => setCollapsed(!collapsed)} className="text-gray-400 hover:text-gray-600 text-xs p-1">
+          {/* Collapse toggle - desktop only */}
+          <button onClick={() => setCollapsed(!collapsed)} className="hidden md:block text-gray-400 hover:text-gray-600 text-xs p-1">
             {collapsed ? '▶' : '◀'}
+          </button>
+          {/* Close button - mobile only */}
+          <button onClick={() => setMobileOpen(false)} className="md:hidden text-gray-400 hover:text-gray-600 text-lg p-1">
+            ✕
           </button>
         </div>
       </div>
@@ -58,13 +69,13 @@ export default function Sidebar({ user, profile, projects }) {
           <div className="pt-3">
             <div className="flex items-center justify-between px-3 mb-1">
               <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Projects</span>
-              <button onClick={() => router.push('/projects/new')}
+              <button onClick={() => navigate('/projects/new')}
                 className="text-gray-400 hover:text-indigo-600 text-sm">+</button>
             </div>
             {projects.map(p => (
               <button
                 key={p.id}
-                onClick={() => router.push(`/projects/${p.id}`)}
+                onClick={() => navigate(`/projects/${p.id}`)}
                 className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                   pathname === `/projects/${p.id}` ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-600 hover:bg-gray-100'
                 }`}
@@ -101,6 +112,30 @@ export default function Sidebar({ user, profile, projects }) {
           </button>
         )}
       </div>
-    </div>
+    </>
+  )
+
+  return (
+    <>
+      {/* Mobile hamburger button */}
+      <button onClick={() => setMobileOpen(true)}
+        className="md:hidden fixed top-3 left-3 z-40 w-9 h-9 bg-white border border-gray-200 rounded-lg flex items-center justify-center shadow-sm">
+        <span className="text-gray-600 text-sm">☰</span>
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="md:hidden fixed inset-0 bg-black/40 z-50" onClick={() => setMobileOpen(false)}>
+          <div className="bg-white w-72 h-full flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+
+      {/* Desktop sidebar */}
+      <div className={`hidden md:flex bg-white border-r border-gray-200 flex-col h-screen sticky top-0 transition-all ${collapsed ? 'w-14' : 'w-56'}`}>
+        {sidebarContent}
+      </div>
+    </>
   )
 }

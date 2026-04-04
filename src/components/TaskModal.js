@@ -126,8 +126,8 @@ export default function TaskModal({ task, members, sections: customSections, onC
   const totalChildDone = childTasks.filter(c => c.progress === 'Done').length + subtaskDone
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-end p-4 pt-12" onClick={onClose}>
-      <div className="bg-white rounded-2xl border border-gray-200 w-[420px] max-h-[85vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-end p-0 sm:p-4 sm:pt-12" onClick={onClose}>
+      <div className="bg-white sm:rounded-2xl border border-gray-200 w-full sm:w-[420px] h-full sm:h-auto sm:max-h-[85vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="p-5">
           <div className="flex items-start justify-between mb-1">
             <div className="pr-4">
@@ -359,22 +359,10 @@ export default function TaskModal({ task, members, sections: customSections, onC
                         <button onClick={() => handleDeleteChild(child.id)}
                           className="text-gray-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 flex-shrink-0">×</button>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 px-3 pb-2 pl-9">
+                      <div className="flex items-center gap-2 px-3 pb-2 pl-9">
                         <input type="date" value={child.due || ''}
                           onChange={e => handleUpdateChild(child, 'due', e.target.value)}
                           className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 w-28" />
-                        <select value={child.priority || ''}
-                          onChange={e => handleUpdateChild(child, 'priority', e.target.value)}
-                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 w-20">
-                          <option value="">Priority</option>
-                          {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                        <select value={child.progress || ''}
-                          onChange={e => handleUpdateChild(child, 'progress', e.target.value)}
-                          className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 w-24">
-                          <option value="">Progress</option>
-                          {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
                         <select value={child.assigned_to || ''}
                           onChange={e => handleUpdateChild(child, 'assigned_to', e.target.value)}
                           className="text-[10px] border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-600 flex-1 max-w-[140px]">
