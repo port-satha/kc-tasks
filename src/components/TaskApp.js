@@ -559,6 +559,8 @@ export default function TaskApp({ projectId = null, projectName = null, settings
 function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, members, onInlineUpdate, isSelected, onSelect, columnConfig }) {
   const overdue = isOverdue(task)
   const { isColVisible } = columnConfig
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleValue, setTitleValue] = useState(task.title)
   const selectClass = "text-[11px] bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full"
   const stopDrag = { onMouseDown: e => e.stopPropagation(), onDragStart: e => e.stopPropagation(), draggable: false }
 
@@ -571,7 +573,23 @@ function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, membe
           className={`w-3.5 h-3.5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${task.progress === 'Done' ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
           {task.progress === 'Done' && <span className="text-white text-[8px]">✓</span>}
         </button>
-        <span onClick={(e) => { if (!e.ctrlKey && !e.metaKey) onOpen(task) }} className={`text-xs truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{task.title}</span>
+        {editingTitle ? (
+          <input autoFocus value={titleValue}
+            onChange={e => setTitleValue(e.target.value)}
+            onBlur={() => { setEditingTitle(false); if (titleValue.trim() && titleValue !== task.title) onInlineUpdate(task, 'title', titleValue.trim()) }}
+            onKeyDown={e => { if (e.key === 'Enter') { setEditingTitle(false); if (titleValue.trim() && titleValue !== task.title) onInlineUpdate(task, 'title', titleValue.trim()) } if (e.key === 'Escape') { setTitleValue(task.title); setEditingTitle(false) } }}
+            onClick={e => e.stopPropagation()}
+            {...stopDrag}
+            className="text-xs text-gray-700 border border-indigo-300 rounded px-1 py-0 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200 w-full" />
+        ) : (
+          <span onClick={(e) => { e.stopPropagation(); setEditingTitle(true); setTitleValue(task.title) }}
+            className={`text-xs truncate cursor-text hover:bg-gray-200/50 rounded px-1 py-0 transition-colors ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{task.title}</span>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); onOpen(task) }}
+          className="text-gray-300 hover:text-indigo-500 flex-shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity ml-1"
+          title="Open task details">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 4l4 4-4 4"/></svg>
+        </button>
       </div>
       {isColVisible('due') && <div className="w-[80px] sm:w-[100px] flex-shrink-0"><DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} /></div>}
       {isColVisible('priority') && <div className="hidden sm:block w-[80px] flex-shrink-0"><select {...stopDrag}
@@ -630,10 +648,11 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
       onDragOver={e => { e.preventDefault(); e.stopPropagation(); onSectionDragOver(section) }}
       onDrop={e => { e.preventDefault(); e.stopPropagation(); onSectionDrop(section) }}
       onDragEnd={onSectionDragEnd}>
-      <button onClick={onToggle}
-        className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors flex-1 min-w-0">
+      <div className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors flex-1 min-w-0">
         <span className="cursor-grab text-gray-300 hover:text-gray-500 text-xs select-none mr-1" title="Drag to reorder">⠿</span>
-        <span className={`text-gray-400 text-xs transition-transform ${collapsed ? '' : 'rotate-90'}`}>▶</span>
+        <button onClick={onToggle} className="flex-shrink-0">
+          <span className={`text-gray-400 text-xs transition-transform ${collapsed ? '' : 'rotate-90'}`}>▶</span>
+        </button>
         {editing ? (
           <input autoFocus value={editName} onChange={e => setEditName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false) }}
@@ -643,10 +662,12 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
             draggable={false}
             className="text-sm font-semibold text-gray-900 border border-indigo-300 rounded px-1 py-0 bg-white w-48" />
         ) : (
-          <span className="text-sm font-semibold text-gray-900">{section}</span>
+          <span onClick={(e) => { e.stopPropagation(); setEditing(true); setEditName(section) }}
+            className="text-sm font-semibold text-gray-900 cursor-text hover:bg-gray-200/50 rounded px-1 py-0 transition-colors"
+            title="Click to rename">{section}</span>
         )}
-        <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{taskCount}</span>
-      </button>
+        <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5 cursor-pointer" onClick={onToggle}>{taskCount}</span>
+      </div>
       <button onClick={(e) => { e.stopPropagation(); onAddToSection(section) }}
         className="text-gray-400 hover:text-indigo-600 text-sm px-1 py-0.5 rounded hover:bg-gray-100 sm:opacity-0 sm:group-hover/sec:opacity-100 transition-opacity"
         title="Add a task to this section">
@@ -993,10 +1014,14 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
               {...{ onMouseDown: e => e.stopPropagation(), onDragStart: e => e.stopPropagation(), draggable: false }}
               className="text-sm text-gray-900 border border-indigo-300 rounded px-1 py-0 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-200 w-full" />
           ) : (
-            <span onClick={(e) => { if (!e.ctrlKey && !e.metaKey) onOpen(task) }}
-              onDoubleClick={(e) => { e.stopPropagation(); setEditingTitle(true) }}
-              className={`text-sm truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
+            <span onClick={(e) => { e.stopPropagation(); setEditingTitle(true); setTitleValue(task.title) }}
+              className={`text-sm truncate cursor-text hover:bg-gray-100 rounded px-1 py-0 transition-colors ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>{task.title}</span>
           )}
+          <button onClick={(e) => { e.stopPropagation(); onOpen(task) }}
+            className="text-gray-300 hover:text-indigo-500 flex-shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity ml-1"
+            title="Open task details">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 4l4 4-4 4"/></svg>
+          </button>
         </div>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
