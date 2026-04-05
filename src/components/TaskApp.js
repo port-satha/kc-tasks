@@ -32,6 +32,48 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const [sectionOrder, setSectionOrder] = useState(null) // custom order, null = default
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set())
 
+  // Column visibility (persisted per project/view)
+  const ALL_COLUMNS = [
+    { key: 'due', label: 'Due date', width: '100px', mobileWidth: '80px' },
+    { key: 'priority', label: 'Priority', width: '80px' },
+    { key: 'value', label: 'Value', width: '80px' },
+    { key: 'effort', label: 'Effort level', width: '100px' },
+    { key: 'progress', label: 'Task Progress', width: '100px' },
+    { key: 'assignee', label: 'Assignee', width: '80px' },
+  ]
+  const colStorageKey = `kc-columns-${projectId || 'my'}`
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem(colStorageKey)
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return ALL_COLUMNS.map(c => c.key) // all visible by default
+  })
+  const [showColumnMenu, setShowColumnMenu] = useState(false)
+  const columnMenuRef = useRef(null)
+
+  useEffect(() => {
+    if (!showColumnMenu) return
+    const handler = (e) => { if (columnMenuRef.current && !columnMenuRef.current.contains(e.target)) setShowColumnMenu(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showColumnMenu])
+
+  const toggleColumn = (key) => {
+    setVisibleColumns(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+      try { localStorage.setItem(colStorageKey, JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
+
+  const isColVisible = (key) => visibleColumns.includes(key)
+
+  // Build dynamic grid template
+  const extraCols = ALL_COLUMNS.filter(c => isColVisible(c.key))
+  const smGridCols = `1fr ${extraCols.map(c => c.width).join(' ')}`
+  const mobileGridCols = isColVisible('due') ? '1fr 80px' : '1fr'
+
   // Merge default sections with any custom ones
   const baseSections = [...new Set([...DEFAULT_SECTIONS, ...customSections])]
   tasks.forEach(t => { if (t.section && !baseSections.includes(t.section)) baseSections.push(t.section) })
@@ -445,7 +487,8 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             onReorderSections={handleReorderSections}
             selectedTaskIds={selectedTaskIds} onSelectTask={handleSelectTask}
             onToggleChildDone={handleToggleChildDone} onInlineUpdateChild={handleInlineUpdateChild}
-            onAddToSection={(section) => setShowAdd(section)} />
+            onAddToSection={(section) => setShowAdd(section)}
+            columnConfig={{ ALL_COLUMNS, isColVisible, visibleColumns, toggleColumn, showColumnMenu, setShowColumnMenu, columnMenuRef, smGridCols, mobileGridCols }} />
 
           {/* Done section — collapsed by default */}
           {filteredDone.length > 0 && (
@@ -513,15 +556,16 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   )
 }
 
-function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, members, onInlineUpdate, isSelected, onSelect }) {
+function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, members, onInlineUpdate, isSelected, onSelect, columnConfig }) {
   const overdue = isOverdue(task)
+  const { isColVisible } = columnConfig
   const selectClass = "text-[11px] bg-transparent border border-transparent hover:border-gray-300 hover:bg-gray-50 rounded px-1 py-0.5 cursor-pointer focus:outline-none focus:border-indigo-300 w-full"
   const stopDrag = { onMouseDown: e => e.stopPropagation(), onDragStart: e => e.stopPropagation(), draggable: false }
 
   return (
     <div onClick={e => onSelect?.(task.id, e)}
-      className={`grid grid-cols-[1fr_80px] sm:grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 pl-6 sm:pl-10 pr-4 py-1.5 border-b border-gray-100 last:border-0 hover:bg-gray-100 items-center group/row ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
-      <div className="flex items-center gap-2 min-w-0">
+      className={`flex gap-2 pl-6 sm:pl-10 pr-4 py-1.5 border-b border-gray-100 last:border-0 hover:bg-gray-100 items-center group/row ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         <span className="w-4 flex-shrink-0 text-gray-300 text-[10px]">↳</span>
         <button onClick={(e) => { e.stopPropagation(); onToggleDone(task) }}
           className={`w-3.5 h-3.5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${task.progress === 'Done' ? 'border-green-500 bg-green-500 hover:bg-green-400' : 'border-gray-300 hover:border-green-400'}`}>
@@ -529,47 +573,32 @@ function ChildTaskRow({ task, parentTask, onOpen, isOverdue, onToggleDone, membe
         </button>
         <span onClick={(e) => { if (!e.ctrlKey && !e.metaKey) onOpen(task) }} className={`text-xs truncate cursor-pointer ${task.progress === 'Done' ? 'text-gray-400 line-through' : 'text-gray-700'}`}>{task.title}</span>
       </div>
-      <DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} />
-      <select {...stopDrag}
-        value={task.priority || ''}
-        onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-      </select>
-      <select {...stopDrag}
-        value={task.value || ''}
-        onChange={e => onInlineUpdate(task, 'value', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
-      </select>
-      <select {...stopDrag}
-        value={task.effort || ''}
-        onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
-      </select>
-      <select {...stopDrag}
-        value={task.progress || ''}
-        onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
-      </select>
-      <select {...stopDrag}
-        value={task.assigned_to || ''}
-        onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {(members || []).map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
-      </select>
+      {isColVisible('due') && <div className="w-[80px] sm:w-[100px] flex-shrink-0"><DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} /></div>}
+      {isColVisible('priority') && <div className="hidden sm:block w-[80px] flex-shrink-0"><select {...stopDrag}
+        value={task.priority || ''} onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
+        className={`${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}>
+        <option value="">—</option>{PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+      </select></div>}
+      {isColVisible('value') && <div className="hidden sm:block w-[80px] flex-shrink-0"><select {...stopDrag}
+        value={task.value || ''} onChange={e => onInlineUpdate(task, 'value', e.target.value)}
+        className={`${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}>
+        <option value="">—</option>{VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+      </select></div>}
+      {isColVisible('effort') && <div className="hidden sm:block w-[100px] flex-shrink-0"><select {...stopDrag}
+        value={task.effort || ''} onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
+        className={`${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}>
+        <option value="">—</option>{EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
+      </select></div>}
+      {isColVisible('progress') && <div className="hidden sm:block w-[100px] flex-shrink-0"><select {...stopDrag}
+        value={task.progress || ''} onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
+        className={`${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}>
+        <option value="">—</option>{TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
+      </select></div>}
+      {isColVisible('assignee') && <div className="hidden sm:block w-[80px] flex-shrink-0"><select {...stopDrag}
+        value={task.assigned_to || ''} onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
+        className={`${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}>
+        <option value="">—</option>{(members || []).map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+      </select></div>}
     </div>
   )
 }
@@ -645,7 +674,7 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection, onRenameSection, onDeleteSection, onReorderSections, selectedTaskIds, onSelectTask, onToggleChildDone, onInlineUpdateChild, onAddToSection }) {
+function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, draggedTaskId, setDraggedTaskId, onDropOnSection, dropTargetId, setDropTargetId, onReorderTask, allSections, onMoveToSection, onRenameSection, onDeleteSection, onReorderSections, selectedTaskIds, onSelectTask, onToggleChildDone, onInlineUpdateChild, onAddToSection, columnConfig }) {
   const [draggedSection, setDraggedSection] = useState(null)
   const [dropTargetSection, setDropTargetSection] = useState(null)
 
@@ -657,10 +686,36 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
     }
   }
 
+  const { ALL_COLUMNS, isColVisible, visibleColumns, toggleColumn, showColumnMenu, setShowColumnMenu, columnMenuRef, smGridCols, mobileGridCols } = columnConfig
+
   return (
     <div className="p-4 flex-1">
-      <div className="grid grid-cols-[1fr_80px] sm:grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-gray-200 mb-1 bg-gray-50 sticky top-12 z-[5]">
-        <span>Name</span><span>Due date</span><span className="hidden sm:block">Priority</span><span className="hidden sm:block">Value</span><span className="hidden sm:block">Effort level</span><span className="hidden sm:block">Task Progress</span><span className="hidden sm:block">Assignee</span>
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 mb-1 bg-gray-50 sticky top-12 z-[5]">
+        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider flex-1">Name</span>
+        {isColVisible('due') && <span className="text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px] sm:w-[100px] flex-shrink-0">Due date</span>}
+        {isColVisible('priority') && <span className="hidden sm:block text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px] flex-shrink-0">Priority</span>}
+        {isColVisible('value') && <span className="hidden sm:block text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px] flex-shrink-0">Value</span>}
+        {isColVisible('effort') && <span className="hidden sm:block text-xs font-medium text-gray-400 uppercase tracking-wider w-[100px] flex-shrink-0">Effort level</span>}
+        {isColVisible('progress') && <span className="hidden sm:block text-xs font-medium text-gray-400 uppercase tracking-wider w-[100px] flex-shrink-0">Task Progress</span>}
+        {isColVisible('assignee') && <span className="hidden sm:block text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px] flex-shrink-0">Assignee</span>}
+        <div className="relative flex-shrink-0" ref={columnMenuRef}>
+          <button onClick={() => setShowColumnMenu(!showColumnMenu)}
+            className="text-gray-400 hover:text-gray-600 text-xs px-1.5 py-1 rounded hover:bg-gray-200 transition-colors" title="Customize columns">
+            <span className="text-sm">⚙</span>
+          </button>
+          {showColumnMenu && (
+            <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1">
+              <p className="text-[10px] text-gray-400 px-3 py-1 uppercase tracking-wider">Show columns</p>
+              {ALL_COLUMNS.map(col => (
+                <label key={col.key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer text-xs text-gray-700">
+                  <input type="checkbox" checked={isColVisible(col.key)} onChange={() => toggleColumn(col.key)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                  {col.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       {Object.entries(grouped).map(([section, sectionTasks]) => {
         if (sectionTasks.length === 0 && !draggedTaskId) return null
@@ -703,13 +758,13 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
                       isDragging={draggedTaskId === t.id}
                       allSections={allSections} currentSection={section} onMoveToSection={onMoveToSection}
                       isSelected={selectedTaskIds?.has(t.id)} onSelect={onSelectTask}
-                      parentTask={t._parentTask} />
+                      parentTask={t._parentTask} columnConfig={columnConfig} />
                     {/* Child tasks (Asana-style subtasks) - full inline editing */}
                     {expandedTasks[t.id] && t.children && t.children.length > 0 && (
                       <div className="bg-gray-50/80 border-t border-gray-100">
                         {t.children.map(child => (
                           <ChildTaskRow key={child.id} task={child} parentTask={t} onOpen={onOpen} isOverdue={isOverdue}
-                            onToggleDone={onToggleChildDone} members={members} onInlineUpdate={onInlineUpdateChild}
+                            onToggleDone={onToggleChildDone} members={members} onInlineUpdate={onInlineUpdateChild} columnConfig={columnConfig}
                             isSelected={selectedTaskIds?.has(child.id)} onSelect={onSelectTask} />
                         ))}
                       </div>
@@ -866,11 +921,12 @@ function DatePicker({ value, onChange }) {
   )
 }
 
-function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection, isSelected, onSelect, parentTask }) {
+function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, isDragging, allSections, currentSection, onMoveToSection, isSelected, onSelect, parentTask, columnConfig }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState(task.title)
   const moveRef = useRef(null)
+  const { isColVisible, smGridCols, mobileGridCols } = columnConfig
   const overdue = isOverdue(task)
   // Count children (new-style) + legacy subtasks
   const childCount = task.children ? task.children.length : 0
@@ -894,8 +950,8 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
 
   return (
     <div onClick={e => onSelect?.(task.id, e)}
-      className={`grid grid-cols-[1fr_80px] sm:grid-cols-[1fr_100px_80px_80px_100px_100px_80px] gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''} ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
-      <div className="flex items-center gap-2 min-w-0">
+      className={`flex gap-2 px-4 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 items-center group/row ${isDragging ? 'opacity-40 bg-indigo-50' : ''} ${isSelected ? 'bg-indigo-50 border-l-2 border-l-indigo-500' : ''}`}>
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         <div className="relative flex-shrink-0 hidden sm:block" ref={moveRef}>
           <span className="cursor-grab text-gray-300 hover:text-gray-500 text-xs select-none" title="Drag to move"
             onClick={(e) => { e.stopPropagation(); if (otherSections.length > 0) setShowMoveMenu(!showMoveMenu) }}>⠿</span>
@@ -944,47 +1000,32 @@ function TaskRow({ task, onOpen, isOverdue, onToggleDone, hasSubtasks, isExpande
         </div>
         {subtaskCount > 0 && <span className="text-xs text-gray-400 flex-shrink-0 ml-1">{subtaskDone}/{subtaskCount}</span>}
       </div>
-      <DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} />
-      <select {...stopDrag}
-        value={task.priority || ''}
-        onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-      </select>
-      <select {...stopDrag}
-        value={task.value || ''}
-        onChange={e => onInlineUpdate(task, 'value', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {VALUES.map(v => <option key={v} value={v}>{v}</option>)}
-      </select>
-      <select {...stopDrag}
-        value={task.effort || ''}
-        onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
-      </select>
-      <select {...stopDrag}
-        value={task.progress || ''}
-        onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
-      </select>
-      <select {...stopDrag}
-        value={task.assigned_to || ''}
-        onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
-        className={`hidden sm:block ${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}
-      >
-        <option value="">—</option>
-        {(members || []).map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
-      </select>
+      {isColVisible('due') && <div className="w-[80px] sm:w-[100px] flex-shrink-0"><DatePicker value={task.due || ''} onChange={v => onInlineUpdate(task, 'due', v)} /></div>}
+      {isColVisible('priority') && <div className="hidden sm:block w-[80px] flex-shrink-0"><select {...stopDrag}
+        value={task.priority || ''} onChange={e => onInlineUpdate(task, 'priority', e.target.value)}
+        className={`${selectClass} ${task.priority ? PRIORITY_COLORS[task.priority] : 'text-gray-400'}`}>
+        <option value="">—</option>{PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+      </select></div>}
+      {isColVisible('value') && <div className="hidden sm:block w-[80px] flex-shrink-0"><select {...stopDrag}
+        value={task.value || ''} onChange={e => onInlineUpdate(task, 'value', e.target.value)}
+        className={`${selectClass} ${task.value ? VALUE_COLORS[task.value] : 'text-gray-400'}`}>
+        <option value="">—</option>{VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+      </select></div>}
+      {isColVisible('effort') && <div className="hidden sm:block w-[100px] flex-shrink-0"><select {...stopDrag}
+        value={task.effort || ''} onChange={e => onInlineUpdate(task, 'effort', e.target.value)}
+        className={`${selectClass} ${task.effort ? EFFORT_COLORS[task.effort] : 'text-gray-400'}`}>
+        <option value="">—</option>{EFFORT_LEVELS.map(el => <option key={el} value={el}>{el}</option>)}
+      </select></div>}
+      {isColVisible('progress') && <div className="hidden sm:block w-[100px] flex-shrink-0"><select {...stopDrag}
+        value={task.progress || ''} onChange={e => onInlineUpdate(task, 'progress', e.target.value)}
+        className={`${selectClass} ${task.progress ? PROGRESS_COLORS[task.progress] : 'text-gray-400'}`}>
+        <option value="">—</option>{TASK_PROGRESS.map(p => <option key={p} value={p}>{p}</option>)}
+      </select></div>}
+      {isColVisible('assignee') && <div className="hidden sm:block w-[80px] flex-shrink-0"><select {...stopDrag}
+        value={task.assigned_to || ''} onChange={e => onInlineUpdate(task, 'assigned_to', e.target.value)}
+        className={`${selectClass} ${task.assigned_to ? 'text-indigo-700' : 'text-gray-400'}`}>
+        <option value="">—</option>{(members || []).map(m => <option key={m.id} value={m.id}>{m.name.split(' ')[0]}</option>)}
+      </select></div>}
     </div>
   )
 }
