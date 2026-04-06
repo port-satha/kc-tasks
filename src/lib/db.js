@@ -111,6 +111,9 @@ export async function fetchTasks(supabase, { projectId = null, memberId = null }
     t.children = (childMap[t.id] || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
   })
 
+  // Track ALL task IDs already loaded (top-level + children) to avoid duplicates
+  const existingIds = new Set(all.map(t => t.id))
+
   // Fetch ALL tasks assigned to this member (for "My Tasks" view)
   // This includes tasks from projects AND subtasks under personal tasks
   if (!projectId && memberId) {
@@ -145,6 +148,8 @@ export async function fetchTasks(supabase, { projectId = null, memberId = null }
         }
 
         assignedTasks.forEach(c => {
+          // Don't duplicate tasks already loaded (as top-level OR as children)
+          if (existingIds.has(c.id)) return
           c.subtasks = (c.subtasks || []).sort((a, b) => a.sort_order - b.sort_order)
           c.children = []
           c._parentTask = parentMap[c.parent_task_id] || null
@@ -152,10 +157,8 @@ export async function fetchTasks(supabase, { projectId = null, memberId = null }
           c._isAssignedChild = true
           // Show assigned tasks under "Recently assigned" in the assignee's My Tasks
           if (!c.section || c.section === '') c.section = 'Recently assigned'
-          // Don't duplicate tasks already in the personal list
-          if (!topLevel.find(t => t.id === c.id)) {
-            topLevel.push(c)
-          }
+          existingIds.add(c.id)
+          topLevel.push(c)
         })
       }
     } catch (err) {
