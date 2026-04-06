@@ -122,7 +122,8 @@ export default function TaskModal({ task, members, sections: customSections, onC
     return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   }
   const dueDate = formatSmartDate(task.due)
-  const subtasks = task.subtasks || []
+  // Only show legacy subtasks if there are NO child tasks (avoid duplicates)
+  const subtasks = childTasks.length > 0 ? [] : (task.subtasks || [])
   const subtaskDone = subtasks.filter(s => s.done).length
   const totalChildCount = childTasks.length + subtasks.length
   const totalChildDone = childTasks.filter(c => c.progress === 'Done').length + subtaskDone
