@@ -18,11 +18,13 @@ import {
   fetchCheckInsBatch,
   fetchReflectionsForObjectives, isLastWeekOfQuarter, isFriday,
   fetchLocks, isPeriodLocked, createEditRequest,
+  fetchAllObjectivesForYear,
 } from '../lib/okr'
 import KrSparkline from './KrSparkline'
 import ChapterDrawer from './ChapterDrawer'
 import ContextBar from './ContextBar'
 import KpiMilestoneCard from './KpiMilestoneCard'
+import MainTabs from './MainTabs'
 
 const CascadeTreeModal = dynamic(() => import('./CascadeTreeModal'), { ssr: false })
 const CheckInDrawer = dynamic(() => import('./CheckInDrawer'), { ssr: false })
@@ -64,6 +66,9 @@ export default function OkrDashboard() {
   const [expandedChapter, setExpandedChapter] = useState(null) // UI-only: which chapter pill is expanded to show its teams
   // Phase 3: view mode — 'level' (company/brand/team), 'mine', or 'team-manage'
   const [viewMode, setViewMode] = useState('level')
+  // Section 5: main-content tab — 'company' (KC health) | 'brand' | 'mine'.
+  // 'team-manage' is reached via the Team I manage pill, not the tabs.
+  const [mainTab, setMainTab] = useState('brand')
   const [reportsCount, setReportsCount] = useState(0)
   const [myObjectives, setMyObjectives] = useState([])
   const [reportsData, setReportsData] = useState({ reports: [], objectives: [] })
@@ -182,6 +187,43 @@ export default function OkrDashboard() {
     if (uniqueIds.length === 0) { setCheckInsByKr({}); return }
     fetchCheckInsBatch(supabase, uniqueIds, 8).then(setCheckInsByKr).catch(() => {})
   }, [supabase, objectives, myObjectives, reportsData])
+
+  // Section 5 — load the full objectives list for the year so we can show
+  // depth indicators ("N team OKRs cascade here · N individual OKRs") on
+  // brand-level cards. Only fetches when viewing brand-level OKRs.
+  useEffect(() => {
+    if (viewMode !== 'level' || levelSelection.level !== 'brand') return
+    fetchAllObjectivesForYear(supabase, year).then(setAllObjectivesForYear).catch(() => {})
+  }, [supabase, year, viewMode, levelSelection.level])
+
+  // Map of brand-objective.id → { team: N, individual: M } cascade counts.
+  // Walks the full year tree so children-of-children (individuals cascading
+  // through a team OKR) are counted too.
+  const cascadeCountsByObjective = useMemo(() => {
+    if (!allObjectivesForYear || allObjectivesForYear.length === 0) return {}
+    const byParent = {}
+    for (const o of allObjectivesForYear) {
+      const pid = o.parent_objective_id
+      if (!pid) continue
+      ;(byParent[pid] || (byParent[pid] = [])).push(o)
+    }
+    const counts = {}
+    function walk(rootId) {
+      const counter = { team: 0, individual: 0 }
+      const stack = [...(byParent[rootId] || [])]
+      while (stack.length > 0) {
+        const node = stack.pop()
+        if (node.level === 'team') counter.team++
+        else if (node.level === 'individual') counter.individual++
+        ;(byParent[node.id] || []).forEach(c => stack.push(c))
+      }
+      return counter
+    }
+    for (const o of allObjectivesForYear) {
+      if (o.level === 'brand') counts[o.id] = walk(o.id)
+    }
+    return counts
+  }, [allObjectivesForYear])
 
   // Load reflections for visible objectives
   useEffect(() => {
@@ -442,21 +484,14 @@ export default function OkrDashboard() {
           drawer (slightly lighter dark) → context bar (light Linen).
           ============================================================ */}
 
-      {/* Pill bar — dark band */}
+      {/* Pill bar — dark band. Section 4 of the brief. The "My OKRs" pill
+          was removed in Section 5 — that mode is now reachable through the
+          MainTabs strip below ContextBar. "Team I manage" stays here as a
+          manager-specific entry point. */}
       <div
         className="px-[18px] py-[10px] mt-2 flex gap-1.5 flex-wrap items-center"
         style={{ background: '#2C2C2A' }}
       >
-        {/* Personal pills */}
-        <button
-          onClick={() => { setViewMode('mine'); setExpandedChapter(null) }}
-          className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium ${
-            viewMode === 'mine'
-              ? 'bg-ss-card text-ss-text'
-              : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
-          }`}>
-          My OKRs
-        </button>
         {reportsCount > 0 && (
           <button
             onClick={() => { setViewMode('team-manage'); setExpandedChapter(null) }}
@@ -487,6 +522,8 @@ export default function OkrDashboard() {
                 setViewMode('level')
                 setLevelSelection({ level: 'brand', brand: b.brand, team: null })
                 setExpandedChapter(null)
+                // Section 5 tab sync: KC → Company tab, others → Brand tab
+                setMainTab(b.brand === 'KC' ? 'company' : 'brand')
               }}
               style={active ? { background: b.activeBg, color: b.activeFg } : undefined}
               className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1.5 ${
@@ -534,6 +571,7 @@ export default function OkrDashboard() {
         onPickTeam={(team) => {
           setViewMode('level')
           setLevelSelection({ level: 'team', brand: null, team })
+          setMainTab('brand')
         }}
       />
 
@@ -545,6 +583,38 @@ export default function OkrDashboard() {
         onQuarterChange={setQuarter}
         brandOwners={brandOwners}
       />
+
+      {/* Section 5 — main content tabs (Company health / Brand: X / My OKRs) */}
+      {viewMode !== 'team-manage' && (
+        <MainTabs
+          active={mainTab}
+          brand={profile?.squad || levelSelection?.brand || 'KC'}
+          isManager={reportsCount > 0}
+          onSwitchToManage={() => setViewMode('team-manage')}
+          onChange={(t) => {
+            setMainTab(t)
+            if (t === 'company') {
+              setViewMode('level')
+              setLevelSelection({ level: 'brand', brand: 'KC', team: null })
+              setExpandedChapter(null)
+            } else if (t === 'mine') {
+              setViewMode('mine')
+              setExpandedChapter(null)
+            } else if (t === 'brand') {
+              setViewMode('level')
+              // If currently on KC (Company tab default), drop user back to
+              // their primary brand. Otherwise keep current selection.
+              if (levelSelection.level === 'brand' && levelSelection.brand === 'KC' && profile?.squad && profile.squad !== 'KC') {
+                setLevelSelection({
+                  level: 'brand',
+                  brand: profile.squad === 'both' ? 'onest' : profile.squad,
+                  team: null,
+                })
+              }
+            }
+          }}
+        />
+      )}
 
       {/* Friday reminder banner — show on Friday if user has pending check-ins */}
       {!fridayBannerDismissed && isFriday() && pendingCheckInCount > 0 && (
@@ -674,7 +744,8 @@ export default function OkrDashboard() {
             </div>
           )}
 
-          {/* OKRs section */}
+          {/* OKRs section — hidden on the Company health tab (KPIs only) */}
+          {mainTab !== 'company' && (
           <div className="px-[18px] pt-2 pb-8">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-[9.5px] uppercase tracking-[1px] text-[#9B8C82] font-medium">
@@ -698,11 +769,14 @@ export default function OkrDashboard() {
                     onEdit={canCreate ? () => { setEditingOkr(obj); setShowOkrForm(true) } : null}
                     onDelete={canCreate ? () => handleDeleteOkr(obj.id) : null}
                     onViewTree={() => setTreeObjectiveId(obj.id)}
-                    checkInsByKr={checkInsByKr} />
+                    checkInsByKr={checkInsByKr}
+                    cascadeCounts={cascadeCountsByObjective[obj.id]}
+                    canEdit={canCreate} />
                 ))}
               </div>
             )}
           </div>
+          )}
         </>
       )}
 
@@ -901,7 +975,7 @@ function Segmented({ options, value, onChange }) {
 // KpiCard moved to src/components/KpiMilestoneCard.js (Section 6)
 
 // ---------- Objective card ----------
-function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, checkInsByKr }) {
+function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, checkInsByKr, cascadeCounts, canEdit }) {
   const pct = calcObjectivePercent(obj)
   const color = progressColor(pct)
   const brand = obj.brand || 'KC'
@@ -957,6 +1031,25 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
       <div className="h-[4px] bg-[rgba(0,0,0,0.04)] rounded-full mt-2 overflow-hidden">
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
       </div>
+
+      {/* Section 5 — depth indicator + permission badge on brand cards */}
+      {(obj.level === 'brand' && (cascadeCounts || canEdit === false)) && (
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          {cascadeCounts && (cascadeCounts.team > 0 || cascadeCounts.individual > 0) && (
+            <span className="text-[10px] text-[#9B8C82]">
+              {cascadeCounts.team} team OKR{cascadeCounts.team !== 1 ? 's' : ''} cascade here
+              {cascadeCounts.individual > 0 && (
+                <> · {cascadeCounts.individual} individual OKR{cascadeCounts.individual !== 1 ? 's' : ''}</>
+              )}
+            </span>
+          )}
+          {canEdit === false && (
+            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-ss-muted text-ss-muted-text inline-flex items-center gap-1">
+              <LockIcon /> view only
+            </span>
+          )}
+        </div>
+      )}
 
       {expanded && (
         <div className="mt-3 pl-7 space-y-1.5">
@@ -2005,5 +2098,20 @@ function ReportOkrCard({ obj, expanded, onToggle, onApprove, onOpenChanges, onVi
         </div>
       )}
     </div>
+  )
+}
+
+// Small lock SVG used by view-only badges. Section 5.
+function LockIcon() {
+  return (
+    <svg width="9" height="11" viewBox="0 0 9 11" fill="none" aria-hidden="true">
+      <path
+        d="M2 4.5V3a2.5 2.5 0 0 1 5 0v1.5M1.5 4.5h6a.5.5 0 0 1 .5.5v4.5a.5.5 0 0 1-.5.5h-6a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5Z"
+        stroke="currentColor"
+        strokeWidth="0.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
