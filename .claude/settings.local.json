@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(update-config)",
+      "Bash(npm run build)",
+      "Bash(git add -A)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"C:/Users/mitda/OneDrive/Desktop/kc-tasks\" && if [ -n \"$(git status --porcelain)\" ]; then npm run build && git add -A && git commit -m \"feat: update KC Tasks $(date +%Y-%m-%d)\" && git push; fi",
+            "timeout": 120,
+            "statusMessage": "Building and deploying to GitHub..."
+          }
+        ]
+      }
+    ]
+  }
+}

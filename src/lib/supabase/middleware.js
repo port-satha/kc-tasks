@@ -27,18 +27,46 @@ export async function updateSession(request) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Redirect unauthenticated users to login (except the login page itself and API routes)
-  if (!user && !request.nextUrl.pathname.startsWith('/login') && !request.nextUrl.pathname.startsWith('/api')) {
+  const pathname = request.nextUrl.pathname
+
+  // Public routes — accessible without a session
+  const publicRoutes = ['/login', '/forgot-password', '/reset-password', '/api']
+  const isPublic = publicRoutes.some(p => pathname.startsWith(p))
+
+  // Redirect unauthenticated users to login
+  if (!user && !isPublic) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  // Redirect authenticated users away from login
-  if (user && request.nextUrl.pathname.startsWith('/login')) {
+  // Redirect authenticated users away from login / forgot-password
+  // (but let them stay on /reset-password — that's the post-click-from-email flow where they need a session)
+  if (user && (pathname.startsWith('/login') || pathname.startsWith('/forgot-password'))) {
     const url = request.nextUrl.clone()
     url.pathname = '/'
     return NextResponse.redirect(url)
+  }
+
+  // Check if profile is completed — redirect to onboarding if not
+  // Skip this check for /onboarding, /login, /api routes
+  // Wrapped in try-catch in case migration hasn't been run yet (profile_completed column may not exist)
+  if (user && !pathname.startsWith('/onboarding') && !pathname.startsWith('/login') && !pathname.startsWith('/api')) {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('profile_completed')
+        .eq('id', user.id)
+        .single()
+
+      if (profile && profile.profile_completed === false) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/onboarding'
+        return NextResponse.redirect(url)
+      }
+    } catch (e) {
+      // Column may not exist yet — skip onboarding check
+    }
   }
 
   return response

@@ -1,0 +1,2 @@
+- [KC Tasks App](project_kc_tasks.md) — Next.js task manager for Kind Collective, deployed on Vercel
+- [Auto commit & push](feedback_auto_commit_push.md) — Always git add, commit, push after code changes

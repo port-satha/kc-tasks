@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/quarter-end",
+      "schedule": "0 17 31 3,12 *"
+    },
+    {
+      "path": "/api/cron/quarter-end",
+      "schedule": "0 17 30 6,9 *"
+    }
+  ]
+}

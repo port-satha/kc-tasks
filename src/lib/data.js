@@ -1,6 +1,6 @@
-export const SECTIONS = [
-  '2025 Big Rocks',
+export const DEFAULT_SECTIONS = [
   'Recently assigned',
+  '2025 Big Rocks',
   'Most Important Lists',
   'Past Deadline',
   'Monday',
@@ -15,44 +15,56 @@ export const SECTIONS = [
   'Do later',
 ]
 
+// SECTIONS is kept for backward compat — components now use useSections() hook
+export const SECTIONS = DEFAULT_SECTIONS
+
+export const RECURRENCE_TYPES = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+]
+
+export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
 export const PRIORITIES = ['High', 'Medium', 'Low']
 export const VALUES = ['High', 'Medium', 'Low']
 export const EFFORT_LEVELS = ['Low effort', 'Medium effort', 'High effort', 'Need to scope']
 export const TASK_PROGRESS = ['Not Started', 'In Progress', 'Waiting', 'Deferred', 'Done']
 
 export const PRIORITY_COLORS = {
-  High: 'bg-red-100 text-red-800',
-  Medium: 'bg-amber-100 text-amber-800',
-  Low: 'bg-blue-100 text-blue-600',
+  High: 'bg-[rgba(226,75,74,0.08)] text-[#A32D2D]',
+  Medium: 'bg-[rgba(186,117,23,0.08)] text-[#854F0B]',
+  Low: 'bg-[rgba(44,44,42,0.06)] text-[#5F5E5A]',
 }
 
 export const VALUE_COLORS = {
-  High: 'bg-emerald-100 text-emerald-800',
-  Medium: 'bg-yellow-100 text-yellow-800',
-  Low: 'bg-gray-100 text-gray-600',
+  High: 'bg-[rgba(45,80,22,0.08)] text-[#2D5016]',
+  Medium: 'bg-[rgba(186,117,23,0.08)] text-[#854F0B]',
+  Low: 'bg-[rgba(44,44,42,0.06)] text-[#5F5E5A]',
 }
 
 export const EFFORT_COLORS = {
-  'Low effort': 'bg-green-100 text-green-700',
-  'Medium effort': 'bg-orange-100 text-orange-700',
-  'High effort': 'bg-red-100 text-red-700',
-  'Need to scope': 'bg-purple-100 text-purple-700',
+  'Low effort': 'bg-[rgba(99,153,34,0.08)] text-[#4A7A12]',
+  'Medium effort': 'bg-[rgba(186,117,23,0.08)] text-[#854F0B]',
+  'High effort': 'bg-[rgba(226,75,74,0.08)] text-[#A32D2D]',
+  'Need to scope': 'bg-[rgba(83,74,183,0.08)] text-[#534AB7]',
 }
 
 export const PROGRESS_COLORS = {
-  'Not Started': 'bg-gray-200 text-gray-600',
-  'In Progress': 'bg-blue-100 text-blue-700',
-  'Waiting': 'bg-amber-100 text-amber-700',
-  'Deferred': 'bg-slate-100 text-slate-600',
-  'Done': 'bg-green-100 text-green-700',
+  'Not Started': 'bg-[rgba(44,44,42,0.06)] text-[#888780]',
+  'In Progress': 'bg-[rgba(55,138,221,0.08)] text-[#2367A8]',
+  'Waiting': 'bg-[rgba(186,117,23,0.08)] text-[#854F0B]',
+  'Deferred': 'bg-[rgba(44,44,42,0.06)] text-[#5F5E5A]',
+  'Done': 'bg-[rgba(99,153,34,0.08)] text-[#4A7A12]',
 }
 
 export const PROGRESS_DOT = {
-  'Not Started': 'bg-gray-400',
-  'In Progress': 'bg-blue-500',
-  'Waiting': 'bg-amber-500',
-  'Deferred': 'bg-slate-400',
-  'Done': 'bg-green-500',
+  'Not Started': 'bg-[#B4B2A9]',
+  'In Progress': 'bg-[#378ADD]',
+  'Waiting': 'bg-[#BA7517]',
+  'Deferred': 'bg-[#888780]',
+  'Done': 'bg-[#639922]',
 }
 
 export function uid() {

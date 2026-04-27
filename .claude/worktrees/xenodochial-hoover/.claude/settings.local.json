@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(update-config)",
+      "mcp__0113f3a4-8097-4992-8481-3468edac947d__get_my_tasks",
+      "Bash(where python:*)",
+      "Bash(where node:*)",
+      "Bash(export FILEPATH=\"C:/Users/mitda/.claude/projects/C--Users-mitda-OneDrive-Desktop-kc-tasks--claude-worktrees-xenodochial-hoover/9bd07c96-9402-4575-b305-754ae1bbc2ba/tool-results/mcp-0113f3a4-8097-4992-8481-3468edac947d-get_my_tasks-1775038334893.txt\")",
+      "Bash(\"/c/Program Files/nodejs/node.exe\" -e \"const fs=require\\(''fs''\\);const d=JSON.parse\\(fs.readFileSync\\(process.env.FILEPATH,''utf8''\\)\\);const t=Array.isArray\\(d\\)?d:\\(d.data||[d]\\);console.log\\(t.length\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(cmd.exe /c \"where node\")",
+      "mcp__0113f3a4-8097-4992-8481-3468edac947d__get_tasks",
+      "Read(//c/Users/mitda/OneDrive/Desktop/kc-tasks/**)",
+      "Bash(ls *.sql)",
+      "Bash(winget install:*)"
+    ]
+  }
+}
