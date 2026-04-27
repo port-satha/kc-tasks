@@ -1,24 +1,40 @@
 'use client'
+import { useState, useEffect } from 'react'
 import { useUser, useProjects } from '../lib/hooks'
 import Sidebar from './Sidebar'
+import ProfileGate from './ProfileGate'
 
 export default function AppShell({ children }) {
   const { user, profile, loading: userLoading } = useUser()
   const { projects, loading: projLoading } = useProjects()
+  const [localProfile, setLocalProfile] = useState(null)
+
+  // Mirror the loaded profile into local state so the gate's onComplete
+  // can refresh it without waiting for the next useUser refetch.
+  useEffect(() => { if (profile) setLocalProfile(profile) }, [profile])
 
   if (userLoading) {
     return (
-      <div className="min-h-screen bg-[#DFDDD9] flex items-center justify-center">
-        <div className="text-[13px] text-[#B7A99D]">Loading...</div>
+      <div className="min-h-screen bg-ss-page flex items-center justify-center">
+        <div className="text-[13px] text-ss-hint">Loading...</div>
       </div>
     )
   }
 
   if (!user) return children
 
+  // Profile gate — block access until the 3 required self-completed fields
+  // (nickname, full_name, position) are filled. Section 13 of the brief.
+  const p = localProfile || profile
+  const profileNeedsCompletion =
+    !p?.nickname?.trim() ||
+    !p?.full_name?.trim() ||
+    !p?.position?.trim() ||
+    p?.profile_completed === false
+
   return (
-    <div className="min-h-screen bg-[#DFDDD9] flex">
-      <Sidebar user={user} profile={profile} projects={projects} />
+    <div className="min-h-screen bg-ss-page flex">
+      <Sidebar user={user} profile={p} projects={projects} />
       <div className="flex-1 flex flex-col min-w-0">
         <main className="flex-1">{children}</main>
         <footer className="px-4 py-3 flex items-center justify-between">
@@ -42,6 +58,12 @@ export default function AppShell({ children }) {
           </div>
         </footer>
       </div>
+      {profileNeedsCompletion && p && (
+        <ProfileGate
+          profile={p}
+          onComplete={(updated) => setLocalProfile(updated)}
+        />
+      )}
     </div>
   )
 }
