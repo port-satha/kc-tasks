@@ -610,7 +610,7 @@ export async function duplicateProject(supabase, projectId, { owner_id, copyTask
 export async function fetchMembers(supabase) {
   const { data, error } = await supabase
     .from('members')
-    .select('*, profile:profiles!profile_id(id, role, squad, team)')
+    .select('*, profile:profiles!profile_id(id, role, squad, team, full_name, nickname, position, profile_completed)')
     .order('name', { ascending: true })
   if (error) throw error
   return data || []
