@@ -1,6 +1,135 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Sarabun:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================
+   Sandy Serenity design tokens (Section 3 of the UX/UI brief).
+   Mirrored as Tailwind colors under `ss.*` in tailwind.config.js.
+   Use whichever feels natural — Tailwind classes (bg-ss-page) for
+   most layout work, or CSS vars (var(--ss-page)) for inline styles
+   and JS-set colors.
+   ============================================================= */
+:root {
+  /* Backgrounds */
+  --ss-page:    #DFDDD9; /* Porcelain — page background */
+  --ss-card:    #F5F3EF; /* Linen — card background */
+  --ss-surface: #DFDDD9; /* same as page; used inside cards */
+  --ss-hover:   #EEEAE4; /* card hover state */
+  --ss-muted:   #E8E5DF; /* dividers, disabled backgrounds */
+  --ss-divider: #E8E5DF; /* 0.5px borders inside cards/forms */
+
+  /* Text */
+  --ss-text:        #2C2C2A; /* Charcoal — primary text */
+  --ss-muted-text:  #9B8C82; /* Stone — secondary/label text */
+  --ss-hint:        #B7A99D; /* hint/placeholder text */
+
+  /* Sidebar */
+  --ss-sidebar:        #2C2C2A;
+  --ss-sidebar-hover:  #3A3A37;
+  --ss-sidebar-text:   #9B8C82;
+  --ss-sidebar-active: #F5F3EF;
+
+  /* Brand colors — onest */
+  --ss-onest:      #2D5016; /* deep green */
+  --ss-onest-bg:   #D4EDBE;
+  --ss-onest-text: #2D5016;
+
+  /* Brand colors — grubby */
+  --ss-grubby:      #1B4D2A; /* forest green */
+  --ss-grubby-bg:   #C8E0D0;
+  --ss-grubby-text: #1B4D2A;
+
+  /* Brand colors — KC (shared / holding-level) */
+  --ss-kc:      #5F5E5A; /* warm grey */
+  --ss-kc-bg:   #E8E5DF;
+  --ss-kc-text: #5F5E5A;
+
+  /* Cross-brand role chip — purple */
+  --ss-both:    #3C3489;
+  --ss-both-bg: #EEEDFE;
+
+  /* Progress status — based on % of target hit */
+  --ss-red:      #A32D2D; /* < 40% of target */
+  --ss-red-bg:   #FAEEDA;
+  --ss-amber:    #BA7517; /* 40–70% */
+  --ss-amber-bg: #FAEEDA;
+  --ss-green:    #639922; /* ≥ 70% */
+  --ss-green-bg: #EAF3DE;
+}
+
 * { box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+body {
+  font-family: 'DM Sans', 'Sarabun', system-ui, sans-serif;
+  background-color: #DFDDD9;
+  color: #2C2C2A;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Warm scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
+
+/* Selection */
+::selection { background: rgba(44,44,42,0.12); }
+
+/* ===== DARK MODE ===== */
+/* Override hardcoded Tailwind bracket-notation colors when .dark is on <html> */
+
+/* --- Backgrounds --- */
+.dark .bg-\[\#DFDDD9\] { background-color: #1A1A18 !important; }
+.dark .bg-\[\#F5F3EF\] { background-color: #262624 !important; }
+.dark .bg-\[\#D1CBC5\] { background-color: #333330 !important; }
+.dark .bg-\[\#2C2C2A\] { background-color: #141412 !important; }
+.dark .bg-\[\#3D3D3A\] { background-color: #2C2C2A !important; }
+
+/* Body background */
+.dark body { background-color: #1A1A18; color: #DFDDD9; }
+
+/* --- Text colors --- */
+.dark .text-\[\#2C2C2A\] { color: #DFDDD9 !important; }
+.dark .text-\[\#DFDDD9\] { color: #DFDDD9 !important; }
+.dark .text-\[\#9B8C82\] { color: #9B8C82 !important; }
+.dark .text-\[\#B7A99D\] { color: #6B665C !important; }
+.dark .text-\[\#6B665C\] { color: #9F9A8C !important; }
+.dark .text-\[\#9F9A8C\] { color: #B7A99D !important; }
+
+/* --- Borders --- */
+.dark .border-\[rgba\(0\,0\,0\,0\.04\)\] { border-color: rgba(255,255,255,0.06) !important; }
+.dark .border-\[rgba\(0\,0\,0\,0\.06\)\] { border-color: rgba(255,255,255,0.08) !important; }
+.dark .border-\[rgba\(0\,0\,0\,0\.1\)\] { border-color: rgba(255,255,255,0.1) !important; }
+.dark .border-\[rgba\(0\,0\,0\,0\.15\)\] { border-color: rgba(255,255,255,0.12) !important; }
+
+/* --- Sidebar (already dark, make slightly darker) --- */
+.dark .bg-\[\#2C2C2A\].h-screen, .dark .md\:block.bg-\[\#2C2C2A\] { background-color: #141412 !important; }
+
+/* --- Inputs & selects --- */
+.dark input, .dark textarea, .dark select {
+  background-color: #262624;
+  color: #DFDDD9;
+  border-color: rgba(255,255,255,0.08);
+}
+.dark input::placeholder, .dark textarea::placeholder {
+  color: #6B665C;
+}
+
+/* --- Hover states --- */
+.dark .hover\:bg-\[rgba\(0\,0\,0\,0\.015\)\]:hover { background-color: rgba(255,255,255,0.03) !important; }
+.dark .hover\:bg-\[rgba\(0\,0\,0\,0\.02\)\]:hover { background-color: rgba(255,255,255,0.04) !important; }
+.dark .hover\:bg-\[rgba\(0\,0\,0\,0\.03\)\]:hover { background-color: rgba(255,255,255,0.05) !important; }
+.dark .hover\:bg-\[rgba\(0\,0\,0\,0\.04\)\]:hover { background-color: rgba(255,255,255,0.06) !important; }
+
+/* --- Scrollbar dark mode --- */
+.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
+.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+.dark ::selection { background: rgba(223,221,217,0.15); }
+
+/* --- Specific component overrides --- */
+.dark .placeholder-\[\#B7A99D\]::placeholder { color: #6B665C !important; }
+.dark .bg-\[rgba\(44\,44\,42\,0\.04\)\] { background-color: rgba(223,221,217,0.04) !important; }
+.dark .border-l-\[\#2C2C2A\] { border-left-color: #DFDDD9 !important; }
