@@ -14,10 +14,12 @@ export const TEAMS = [
 
 // Brand options for profile assignment. The DB column is still named `squad`
 // (legacy) but the UI label now says "Brand". Backbone brand renamed to KC.
+// 'both' is for members whose role spans onest and grubby (Section 12).
 export const SQUADS = [
   { value: 'KC', label: 'KC · Shared', subtitle: 'Shared functions', color: '#5F5E5A' },
   { value: 'onest', label: 'onest', subtitle: 'Brand', color: '#2D5016' },
   { value: 'grubby', label: 'grubby', subtitle: 'Brand', color: '#2D7A3E' },
+  { value: 'both', label: 'Both brands', subtitle: 'onest + grubby', color: '#3C3489' },
 ]
 
 // Role helpers — super_admin inherits everything admin can do.

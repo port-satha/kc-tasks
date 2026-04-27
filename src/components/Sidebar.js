@@ -73,11 +73,26 @@ const ADMIN_NAV_ITEMS = [
 export default function Sidebar({ user, profile, projects }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [showProfileEdit, setShowProfileEdit] = useState(false)
+  const [incompleteCount, setIncompleteCount] = useState(0)
   const pathname = usePathname()
   const router = useRouter()
   const supabase = useSupabase()
 
   const [darkMode, setDarkMode] = useState(false)
+
+  // Admin chip — count of profiles missing required fields. Only fetched
+  // for admin / super_admin / people. Section 12 of the brief.
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin' || profile?.role === 'people'
+  useEffect(() => {
+    if (!isAdmin) { setIncompleteCount(0); return }
+    let active = true
+    supabase
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_complete', false)
+      .then(({ count }) => { if (active) setIncompleteCount(count || 0) })
+    return () => { active = false }
+  }, [supabase, isAdmin])
 
   useEffect(() => {
     const saved = localStorage.getItem('kc-dark-mode')
@@ -222,6 +237,19 @@ export default function Sidebar({ user, profile, projects }) {
           )}
         </div>
       </div>
+
+      {/* Admin chip — N incomplete profiles. Visible only to admins. */}
+      {isAdmin && incompleteCount > 0 && (
+        <button
+          onClick={() => navigate('/members')}
+          className="mx-3 mb-2 flex items-center gap-2 rounded-md px-2 py-1.5 bg-[#FAEEDA]/15 hover:bg-[#FAEEDA]/25 text-[10.5px] text-[#EFCC80] transition-colors text-left"
+          title="View incomplete profiles"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F27] flex-shrink-0" />
+          <span className="truncate flex-1">{incompleteCount} incomplete profile{incompleteCount !== 1 ? 's' : ''}</span>
+          <span className="opacity-70">›</span>
+        </button>
+      )}
 
       {/* User profile (bottom) */}
       <div className="mt-auto px-3 pb-3 pt-3 border-t border-[rgba(255,255,255,0.06)]" style={{ borderTopWidth: '0.5px' }}>

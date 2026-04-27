@@ -1,11 +1,12 @@
 'use client'
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import AppShell from '../../components/AppShell'
 import { useSupabase, useMembers, useUser } from '../../lib/hooks'
 import { createMember, updateMember, deleteMember, updateProfileRole, updateMemberSquad } from '../../lib/db'
-import AvatarChip from '../../components/AvatarChip'
 import { hasAdminAccess, isSuperAdmin } from '../../lib/profile'
 import { CHAPTERS, TEAM_TO_CHAPTER } from '../../lib/okr'
+import MemberCard from '../../components/MemberCard'
 
 // Section 12 of the UX/UI brief — Team directory redesign.
 // Members are grouped by Chapter (Strategy & BD / Marketing / Innovation /
@@ -23,26 +24,13 @@ const CHAPTER_DOT = {
   'Unassigned': '#B7A99D',
 }
 
+// Brand pill colors used by the FilterPill below. The full table of brand
+// styles (incl. avatar bg, "both" purple) lives in components/MemberCard.js.
 const BRAND_BADGE = {
   onest:  { bg: '#D4EDBE', fg: '#2D5016' },
   grubby: { bg: '#C8E0D0', fg: '#1B4D2A' },
   KC:     { bg: '#E8E5DF', fg: '#5F5E5A' },
   both:   { bg: '#EEEDFE', fg: '#3C3489' },
-}
-
-const AVATAR_BG = {
-  onest:  '#EAF3DE',
-  grubby: '#C8E0D0',
-  KC:     '#E8E5DF',
-  both:   '#EEEDFE',
-}
-
-const ROLE_PILL = {
-  super_admin: { bg: '#2C2C2A', fg: '#F5F3EF', label: 'Super admin' },
-  admin:       { bg: '#3A3A37', fg: '#D4CFC9', label: 'Admin' },
-  people:      { bg: '#3A3A37', fg: '#D4CFC9', label: 'People' },
-  manager:     { bg: '#D4EDBE', fg: '#2D5016', label: 'Manager' },
-  member:      { bg: '#E8E5DF', fg: '#5F5E5A', label: 'Member' },
 }
 
 function chapterOf(member) {
@@ -67,7 +55,8 @@ function isIncomplete(member) {
 // ===========================================================
 export default function MembersPage() {
   const supabase = useSupabase()
-  const { profile } = useUser()
+  const router = useRouter()
+  const { user, profile } = useUser()
   const { members, loading, reload } = useMembers()
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
@@ -115,6 +104,10 @@ export default function MembersPage() {
     const name = member.profile?.nickname || member.nickname || member.name || 'this member'
     alert(`Reminder sent to ${name}. (They'll be prompted to complete their profile on next login.)`)
   }
+
+  // Edit own profile — routes to /onboarding which acts as the profile editor.
+  // Admins can also edit other people's profiles by passing through there.
+  const handleEdit = () => router.push('/onboarding')
 
   // ===== Filtering =====
   const filteredMembers = useMemo(() => {
@@ -308,8 +301,11 @@ export default function MembersPage() {
                       onSquadChange={handleSquadChange}
                       onDelete={handleDelete}
                       onRemind={handleRemind}
+                      onEdit={handleEdit}
                       canEditRoles={canEditRoles}
                       canAddRemove={canAddRemove}
+                      isOwnRow={user?.id && m.profile?.id === user.id}
+                      isIncomplete={isIncomplete(m)}
                     />
                   ))}
                 </div>
@@ -348,135 +344,4 @@ function FilterPill({ children, active, onClick, brand, dotColor }) {
   )
 }
 
-// ===========================================================
-// Member card — chapter group row
-// ===========================================================
-function MemberCard({ member: m, isLast, onRoleChange, onSquadChange, onDelete, onRemind, canEditRoles, canAddRemove }) {
-  const profile     = m.profile || {}
-  const nickname    = profile.nickname || m.nickname || m.name || 'User'
-  const fullName    = profile.full_name || ''
-  const position    = profile.position_title || profile.position || m.position || ''
-  const squad       = profile.squad || m.squad || ''
-  const team        = profile.team || m.team || ''
-  const profileRole = profile.role || null
-  const incomplete  = isIncomplete(m)
-
-  const isSuperAdminRow = profileRole === 'super_admin'
-  const canEditThisRow  = canEditRoles && profile.id && (!isSuperAdminRow || canAddRemove)
-  const rolePill        = ROLE_PILL[profileRole || 'member'] || ROLE_PILL.member
-  const brandStyles     = BRAND_BADGE[squad] || { bg: '#E8E5DF', fg: '#9B8C82' }
-  const avatarBg        = AVATAR_BG[squad] || '#E8E5DF'
-
-  return (
-    <div className={`flex items-start gap-3 px-4 py-3 ${!isLast ? 'border-b border-ss-divider' : ''} ${incomplete ? 'border-l-2 border-l-[#EF9F27]' : ''} hover:bg-ss-hover transition-colors`}>
-      {/* Avatar with brand-colored background */}
-      <div className="flex-shrink-0 mt-0.5">
-        <div
-          className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[13px] font-medium"
-          style={{ backgroundColor: avatarBg, color: m.avatar_color || '#5F5E5A' }}
-        >
-          {m.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={m.avatar_url} alt={nickname} className="w-full h-full rounded-full object-cover" />
-          ) : (
-            nickname.charAt(0).toUpperCase()
-          )}
-        </div>
-      </div>
-
-      {/* Name + position + badges */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-[13px] font-medium text-ss-text truncate">
-            {nickname}
-            {fullName && (
-              <span className="text-ss-muted-text font-normal ml-1.5 text-[12px]">{fullName}</span>
-            )}
-          </p>
-          {incomplete && (
-            <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-[#FAEEDA] text-[#854F0B] font-medium">
-              profile incomplete
-            </span>
-          )}
-        </div>
-        {position && (
-          <p className="text-[11.5px] text-ss-muted-text truncate mt-0.5">{position}</p>
-        )}
-        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-          {squad && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-                  style={{ backgroundColor: brandStyles.bg, color: brandStyles.fg }}>
-              {squad === 'KC' ? 'KC · Shared' : squad}
-            </span>
-          )}
-          {team && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-ss-muted text-ss-muted-text">
-              {team}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Email — desktop only */}
-      <span className="text-[11px] text-ss-hint truncate hidden md:block max-w-[160px] mt-1">
-        {m.email || ''}
-      </span>
-
-      {/* Action column: role pill / role select + brand select + remind/remove */}
-      <div className="flex items-center gap-1.5 flex-shrink-0 mt-0.5">
-        {/* Brand select (admin+) */}
-        {canEditRoles && (
-          <select
-            value={squad}
-            onChange={e => onSquadChange(m.id, profile.id || null, e.target.value)}
-            className="hidden lg:block text-[11px] border border-ss-divider rounded-lg px-2 py-1 bg-ss-card text-ss-muted-text focus:outline-none focus:border-ss-text transition-colors">
-            <option value="">— Brand</option>
-            <option value="KC">KC · Shared</option>
-            <option value="onest">onest</option>
-            <option value="grubby">grubby</option>
-          </select>
-        )}
-
-        {/* Role pill — read-only for non-admins, dropdown for admins */}
-        {canEditThisRow ? (
-          <select
-            value={profileRole || 'member'}
-            onChange={e => onRoleChange(profile.id, e.target.value)}
-            style={{ backgroundColor: rolePill.bg, color: rolePill.fg }}
-            className="text-[10.5px] rounded-full px-2.5 py-1 font-medium border-none focus:outline-none focus:ring-2 focus:ring-ss-text/20">
-            <option value="member">Member</option>
-            <option value="manager">Manager</option>
-            <option value="people">People</option>
-            <option value="admin">Admin</option>
-            {isSuperAdminRow && <option value="super_admin">Super admin</option>}
-          </select>
-        ) : (
-          <span
-            className="text-[10.5px] px-2.5 py-1 rounded-full font-medium"
-            style={{ backgroundColor: rolePill.bg, color: rolePill.fg }}>
-            {rolePill.label}
-          </span>
-        )}
-
-        {/* Remind (incomplete) or Remove (super_admin) */}
-        {incomplete ? (
-          canEditRoles && (
-            <button
-              onClick={() => onRemind(m)}
-              className="text-[10.5px] px-2.5 py-1 rounded-full bg-ss-muted text-ss-muted-text hover:bg-ss-hover transition-colors">
-              Remind
-            </button>
-          )
-        ) : (
-          canAddRemove && (
-            <button
-              onClick={() => onDelete(m.id, m.name || m.nickname)}
-              className="text-[10.5px] text-ss-hint hover:text-ss-red transition-colors">
-              Remove
-            </button>
-          )
-        )}
-      </div>
-    </div>
-  )
-}
+// MemberCard is now in src/components/MemberCard.js
