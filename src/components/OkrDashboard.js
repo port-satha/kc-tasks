@@ -27,6 +27,7 @@ import KpiMilestoneCard from './KpiMilestoneCard'
 import MainTabs from './MainTabs'
 import OkrCreateWizard from './OkrCreateWizard'
 import ApprovalStatusPill from './ApprovalStatusPill'
+import OnboardingEmptyState from './OnboardingEmptyState'
 
 const CascadeTreeModal = dynamic(() => import('./CascadeTreeModal'), { ssr: false })
 const CheckInDrawer = dynamic(() => import('./CheckInDrawer'), { ssr: false })
@@ -767,6 +768,12 @@ export default function OkrDashboard() {
           latestCheckIns={latestCheckIns}
           checkInsByKr={checkInsByKr}
           reflectionsByObjective={reflectionsByObjective}
+          onSeeBrand={() => {
+            setMainTab('brand')
+            setViewMode('level')
+            const b = profile?.squad === 'both' ? 'onest' : (profile?.squad || 'KC')
+            setLevelSelection({ level: 'brand', brand: b, team: null })
+          }}
         />
       ) : viewMode === 'team-manage' ? (
         <TeamManageView
@@ -1747,7 +1754,7 @@ function ModalActions({ onClose, submitLabel }) {
 // New code should import ApprovalStatusPill directly. Section 8 of the brief.
 const ApprovalBadge = ApprovalStatusPill
 
-function MyOkrsView({ profile, objectives, year, quarter, expandedOkrs, onToggleExpand, onAdd, onEdit, onDelete, onRequestApproval, onViewTree, onCheckInKr, onReflect, latestCheckIns, checkInsByKr, reflectionsByObjective }) {
+function MyOkrsView({ profile, objectives, year, quarter, expandedOkrs, onToggleExpand, onAdd, onEdit, onDelete, onRequestApproval, onViewTree, onCheckInKr, onReflect, latestCheckIns, checkInsByKr, reflectionsByObjective, onSeeBrand }) {
   const pendingCount = objectives.filter(o => o.approval_status === 'pending_approval').length
   const managerName = profile?.manager_nickname || 'your manager'
   const hasManager = !!profile?.manager_id
@@ -1781,17 +1788,11 @@ function MyOkrsView({ profile, objectives, year, quarter, expandedOkrs, onToggle
       )}
 
       {objectives.length === 0 ? (
-        <div className="bg-[#F5F3EF] border border-[rgba(0,0,0,0.04)] rounded-xl p-6 text-center">
-          <p className="text-[13px] text-[#2C2C2A] font-medium">No individual OKRs yet.</p>
-          <p className="text-[11px] text-[#9B8C82] mt-1 leading-relaxed max-w-md mx-auto">
-            Individual OKRs connect your work to the broader Kind Collective mission.
-            They're private — only you, your manager, and the People team can see them.
-          </p>
-          <button onClick={onAdd}
-            className="mt-4 text-[11px] px-4 py-2 bg-[#2C2C2A] text-[#DFDDD9] rounded-md hover:bg-[#3D3D3A]">
-            + Add your first objective
-          </button>
-        </div>
+        <OnboardingEmptyState
+          profile={profile}
+          onWriteFirst={onAdd}
+          onSeeBrand={onSeeBrand}
+        />
       ) : (
         <div className="flex flex-col gap-2">
           {objectives.map(obj => (
