@@ -1,167 +1,300 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useSupabase, useUser } from '../lib/hooks'
-import { saveCheckIn, getMondayOf } from '../lib/okr'
+// Section 9 of the UX/UI brief — weekly check-in drawer.
+// A single drawer that stacks all of the user's pending KRs vertically.
+// KR sections beyond the first are dimmed (opacity 0.5) until the
+// preceding KR is submitted. Each section has a cascade path, KR label
+// + current value/target, sparkline history, confidence tapper, note,
+// and Submit/Skip footer.
 
-/**
- * Check-in drawer. Accepts either a single KR or an array of KRs to step through.
- * - Desktop: slides in from right (480px wide)
- * - Mobile: bottom sheet, full-height
- *
- * Props:
- *   krs: array of { id, title, target_value, current_value, unit, objective?: { title } }
- *   onClose()
- *   onSaved(savedCount) — called after each save so parent can refresh
- */
+import { useState, useEffect, useMemo } from 'react'
+import { useSupabase, useUser } from '../lib/hooks'
+import { saveCheckIn, getMondayOf, fetchCheckInsBatch, currentQuarter } from '../lib/okr'
+import ConfidenceTapper from './ConfidenceTapper'
+import SparklineRow from './SparklineRow'
+
+// Compute "Week N of 13" for the current quarter.
+function currentWeekOfQuarter() {
+  const now = new Date()
+  const q = currentQuarter()
+  const startMonth = (q - 1) * 3
+  const start = new Date(now.getFullYear(), startMonth, 1)
+  const diffMs = now - start
+  const diffWeeks = Math.floor(diffMs / (7 * 24 * 3600 * 1000)) + 1
+  return Math.max(1, Math.min(13, diffWeeks))
+}
+
 export default function CheckInDrawer({ krs, onClose, onSaved }) {
   const supabase = useSupabase()
   const { user } = useUser()
-  const [idx, setIdx] = useState(0)
-  const [form, setForm] = useState({ value: '', confidence: 3, note: '' })
-  const [saving, setSaving] = useState(false)
-  const [savedCount, setSavedCount] = useState(0)
+
+  // Per-KR form state, keyed by index
+  const [forms, setForms] = useState(() =>
+    (krs || []).map(kr => ({
+      value: kr.current_value ?? '',
+      confidence: null,
+      note: '',
+    }))
+  )
+  const [submittedFlags, setSubmittedFlags] = useState(() => (krs || []).map(() => false))
+  const [submittedMeta, setSubmittedMeta] = useState(() => (krs || []).map(() => null))
+  const [historyByKr, setHistoryByKr] = useState({})
+  const [savingIdx, setSavingIdx] = useState(-1)
 
   const weekOf = getMondayOf()
-  const currentKr = krs?.[idx]
-  const isLast = idx === krs.length - 1
+  const weekN = currentWeekOfQuarter()
+  const quarter = currentQuarter()
 
+  // Load last 8 weeks of check-ins for each KR — feeds the sparkline.
   useEffect(() => {
-    // Pre-fill form with current KR's current_value
-    if (currentKr) {
-      setForm({ value: currentKr.current_value ?? '', confidence: 3, note: '' })
-    }
-  }, [currentKr?.id])
+    if (!krs || krs.length === 0) return
+    fetchCheckInsBatch(supabase, krs.map(k => k.id), 8)
+      .then(setHistoryByKr)
+      .catch(() => setHistoryByKr({}))
+  }, [supabase, krs])
 
-  const goNext = () => {
-    if (isLast) onClose()
-    else setIdx(i => i + 1)
+  const totalKrs = krs?.length || 0
+  const submittedCount = submittedFlags.filter(Boolean).length
+  const allDone = submittedCount === totalKrs
+
+  // Index of the section currently editable. Sections beyond it are dimmed.
+  const activeIdx = useMemo(() => submittedFlags.indexOf(false), [submittedFlags])
+
+  const updateForm = (idx, patch) => {
+    setForms(prev => prev.map((f, i) => i === idx ? { ...f, ...patch } : f))
   }
 
-  const doSave = async ({ skip = false } = {}) => {
-    if (!currentKr || !user?.id) return
-    setSaving(true)
+  const handleSubmit = async (idx, { skip = false } = {}) => {
+    const kr = krs?.[idx]
+    if (!kr || !user?.id) return
+    const f = forms[idx]
+    if (!skip && (!f.confidence || f.value === '' || f.value === null)) return
+    setSavingIdx(idx)
     try {
       await saveCheckIn(supabase, {
-        keyResultId: currentKr.id,
-        value: form.value,
-        confidence: form.confidence,
-        note: form.note,
+        keyResultId: kr.id,
+        value: f.value,
+        confidence: f.confidence,
+        note: f.note,
         weekOf,
         createdBy: user.id,
         isSkipped: skip,
       })
-      setSavedCount(c => c + 1)
-      onSaved?.(savedCount + 1)
-      goNext()
+      setSubmittedFlags(prev => prev.map((s, i) => i === idx ? true : s))
+      setSubmittedMeta(prev => prev.map((m, i) => i === idx ? {
+        confidence: skip ? null : f.confidence,
+        skipped: skip,
+        weekN,
+      } : m))
+      onSaved?.(submittedCount + 1)
     } catch (err) {
       alert('Failed: ' + err.message)
+    } finally {
+      setSavingIdx(-1)
     }
-    setSaving(false)
   }
 
-  if (!currentKr) return null
+  if (!krs || krs.length === 0) return null
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-stretch sm:justify-end" onClick={onClose}>
       <div
-        className="bg-[#DFDDD9] w-full sm:max-w-[480px] sm:h-full rounded-t-2xl sm:rounded-t-none sm:rounded-l-2xl overflow-hidden flex flex-col"
-        onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-[rgba(0,0,0,0.06)] flex items-start justify-between">
-          <div>
-            <p className="text-[13px] font-medium text-[#2C2C2A]">Weekly check-in</p>
-            <p className="text-[10px] text-[#9B8C82] mt-0.5">
-              Week of {new Date(weekOf).toLocaleDateString()} · KR {idx + 1} of {krs.length}
-            </p>
+        className="bg-ss-page w-full sm:max-w-[520px] sm:h-full rounded-t-2xl sm:rounded-t-none sm:rounded-l-2xl overflow-hidden flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header + progress bar */}
+        <div className="px-5 pt-4 pb-3 border-b border-ss-divider">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-[14px] font-medium text-ss-text">Weekly check-in</p>
+              <p className="text-[11px] text-ss-muted-text mt-0.5">
+                Your {totalKrs} key result{totalKrs !== 1 ? 's' : ''} · Q{quarter} · Week {weekN} of 13
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-ss-muted-text hover:text-ss-text text-[20px] leading-none"
+              aria-label="Close"
+            >
+              ×
+            </button>
           </div>
-          <button onClick={onClose} className="text-[#9B8C82] hover:text-[#2C2C2A] text-[18px]">×</button>
+          <div className="h-1.5 bg-ss-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#639922] transition-all duration-300"
+              style={{ width: `${(submittedCount / totalKrs) * 100}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-ss-hint mt-1.5">
+            {submittedCount} of {totalKrs} submitted
+          </p>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
-          {/* KR context */}
-          <div className="mb-4 bg-[#F5F3EF] border border-[rgba(0,0,0,0.04)] rounded-lg p-3">
-            {currentKr.objective?.title && (
-              <p className="text-[10px] text-[#9B8C82] truncate mb-1">{currentKr.objective.title}</p>
-            )}
-            <p className="text-[12.5px] font-medium text-[#2C2C2A] leading-tight">{currentKr.title}</p>
-            <p className="text-[10px] text-[#9B8C82] mt-1">
-              Last value: {currentKr.current_value ?? '—'}
-              {currentKr.target_value != null && <> · Target: {currentKr.target_value}{currentKr.unit ? ` ${currentKr.unit}` : ''}</>}
-            </p>
-          </div>
-
-          {/* Value */}
-          <div className="mb-4">
-            <label className="text-[10px] uppercase tracking-wider text-[#9B8C82] block mb-1.5">
-              Current value
-            </label>
-            <div className="relative">
-              <input type="number" step="any" value={form.value}
-                onChange={e => setForm({ ...form, value: e.target.value })}
-                autoFocus
-                className="w-full text-[14px] text-[#2C2C2A] bg-[#F5F3EF] border border-[rgba(0,0,0,0.08)] rounded-lg px-3 py-2 focus:outline-none focus:border-[#2C2C2A]" />
-              {currentKr.unit && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#9B8C82]">{currentKr.unit}</span>
-              )}
+        {/* Stacked KR sections */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {krs.map((kr, i) => {
+            const isActive  = i === activeIdx
+            const isLocked  = !isActive && !submittedFlags[i]
+            const isSubmitted = submittedFlags[i]
+            return (
+              <KrSection
+                key={kr.id}
+                kr={kr}
+                form={forms[i]}
+                history={historyByKr[kr.id] || []}
+                onChange={(patch) => updateForm(i, patch)}
+                onSubmit={() => handleSubmit(i)}
+                onSkip={() => handleSubmit(i, { skip: true })}
+                isActive={isActive}
+                isLocked={isLocked}
+                isSubmitted={isSubmitted}
+                submitted={submittedMeta[i]}
+                saving={savingIdx === i}
+              />
+            )
+          })}
+          {allDone && (
+            <div className="text-center py-2">
+              <p className="text-[12.5px] font-medium text-[#3B6D11]">
+                ✓ All check-ins logged for week {weekN}
+              </p>
+              <button
+                onClick={onClose}
+                className="mt-2 text-[11.5px] px-4 py-1.5 bg-ss-text text-ss-page rounded-md font-medium hover:opacity-90"
+              >
+                Done
+              </button>
             </div>
-          </div>
-
-          {/* Confidence */}
-          <div className="mb-4">
-            <label className="text-[10px] uppercase tracking-wider text-[#9B8C82] block mb-1.5">
-              Confidence
-            </label>
-            <div className="flex gap-1.5">
-              {[1, 2, 3, 4, 5].map(n => {
-                const active = form.confidence === n
-                return (
-                  <button key={n}
-                    type="button"
-                    onClick={() => setForm({ ...form, confidence: n })}
-                    className={`flex-1 py-2 text-[13px] rounded-md border transition-colors ${
-                      active
-                        ? 'border-[#2C2C2A] bg-[#F5F3EF] text-[#2C2C2A] font-medium border-2'
-                        : 'border-[rgba(0,0,0,0.08)] bg-[#F5F3EF] text-[#9B8C82] hover:text-[#2C2C2A]'
-                    }`}>
-                    {n}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="flex justify-between mt-1 text-[9px] text-[#B7A99D]">
-              <span>1 = not confident</span>
-              <span>5 = very confident</span>
-            </div>
-          </div>
-
-          {/* Note */}
-          <div className="mb-4">
-            <label className="text-[10px] uppercase tracking-wider text-[#9B8C82] block mb-1.5">
-              Note <span className="text-[#B7A99D] normal-case">(optional)</span>
-            </label>
-            <textarea value={form.note}
-              onChange={e => setForm({ ...form, note: e.target.value })}
-              placeholder="What's happening on this KR?"
-              rows={3}
-              className="w-full text-[12.5px] text-[#2C2C2A] bg-[#F5F3EF] border border-[rgba(0,0,0,0.08)] rounded-lg px-3 py-2 focus:outline-none focus:border-[#2C2C2A]" />
-          </div>
+          )}
         </div>
+      </div>
+    </div>
+  )
+}
 
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-[rgba(0,0,0,0.06)] flex gap-2">
-          <button
-            onClick={() => doSave({ skip: true })}
-            disabled={saving}
-            className="text-[11px] px-3 py-2 border border-[rgba(0,0,0,0.08)] text-[#9B8C82] rounded-md hover:bg-[rgba(0,0,0,0.03)] disabled:opacity-50">
-            Skip week
-          </button>
-          <button
-            onClick={() => doSave()}
-            disabled={saving || form.value === ''}
-            className="flex-1 text-[12px] px-4 py-2 bg-[#2C2C2A] text-[#DFDDD9] rounded-md hover:bg-[#3D3D3A] font-medium disabled:opacity-50">
-            {saving ? 'Saving…' : (isLast ? 'Save & finish' : 'Save & next')}
-          </button>
+// ============================================================
+// Single KR section
+// ============================================================
+function KrSection({ kr, form, history, onChange, onSubmit, onSkip, isActive, isLocked, isSubmitted, submitted, saving }) {
+  if (isSubmitted) {
+    // Post-submit confirmation row
+    return (
+      <div className="bg-[#EAF3DE] border border-[#B8D98A] rounded-lg px-4 py-3 flex items-center gap-2">
+        <span className="text-[#3B6D11] text-[16px] leading-none">✓</span>
+        <p className="text-[12px] text-[#2D5016] font-medium flex-1 truncate">
+          {kr.title}
+        </p>
+        <p className="text-[10.5px] text-[#3B6D11]">
+          Submitted{submitted?.confidence ? ` · confidence ${submitted.confidence}/5` : (submitted?.skipped ? ' · skipped' : '')}
+          {submitted?.weekN ? ` · week ${submitted.weekN} logged` : ''}
+        </p>
+      </div>
+    )
+  }
+
+  const cascade = [
+    kr.objective?.brand && `${kr.objective.brand} brand`,
+    kr.objective?.title,
+    kr.objective?.team,
+  ].filter(Boolean).join(' › ')
+
+  return (
+    <div
+      className={`bg-ss-card border border-ss-divider rounded-lg p-4 transition-opacity ${
+        isLocked ? 'opacity-50 pointer-events-none' : ''
+      }`}
+      aria-disabled={isLocked}
+    >
+      {/* Cascade path */}
+      {cascade && (
+        <p className="text-[9.5px] uppercase tracking-wider text-ss-hint mb-1.5 truncate">
+          {cascade}
+        </p>
+      )}
+
+      {/* KR label + current/target */}
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <p className="text-[12.5px] font-medium text-ss-text leading-tight flex-1 min-w-0">
+          {kr.title}
+        </p>
+        <p className="text-[10.5px] text-ss-muted-text flex-shrink-0 whitespace-nowrap">
+          {kr.current_value ?? '—'}
+          {kr.target_value != null && <> / {kr.target_value}{kr.unit ? ` ${kr.unit}` : ''}</>}
+        </p>
+      </div>
+
+      {/* Sparkline history with live preview */}
+      <div className="mb-3">
+        <SparklineRow history={history} currentConfidence={form.confidence} />
+      </div>
+
+      {/* Current value input */}
+      <div className="mb-3">
+        <label className="text-[10px] uppercase tracking-wider text-ss-muted-text block mb-1">
+          Current value
+        </label>
+        <div className="relative">
+          <input
+            type="number"
+            step="any"
+            value={form.value}
+            onChange={e => onChange({ value: e.target.value })}
+            disabled={isLocked}
+            className="w-full text-[14px] text-ss-text bg-ss-page border border-ss-divider rounded-md px-3 py-2 focus:outline-none focus:border-ss-text"
+          />
+          {kr.unit && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-ss-hint">
+              {kr.unit}
+            </span>
+          )}
         </div>
+      </div>
+
+      {/* Confidence */}
+      <div className="mb-3">
+        <label className="text-[10px] uppercase tracking-wider text-ss-muted-text block mb-1.5">
+          Confidence
+        </label>
+        <ConfidenceTapper
+          value={form.confidence}
+          onChange={(n) => onChange({ confidence: n })}
+          disabled={isLocked}
+        />
+      </div>
+
+      {/* Note */}
+      <div className="mb-3">
+        <label className="text-[10px] uppercase tracking-wider text-ss-muted-text block mb-1">
+          Note <span className="text-ss-hint normal-case">(optional)</span>
+        </label>
+        <textarea
+          value={form.note}
+          onChange={e => onChange({ note: e.target.value })}
+          disabled={isLocked}
+          placeholder="What moved this week? Any blockers?"
+          rows={2}
+          className="w-full text-[12px] text-ss-text bg-ss-page border border-ss-divider rounded-md px-3 py-2 focus:outline-none focus:border-ss-text"
+        />
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onSkip}
+          disabled={isLocked || saving}
+          className="text-[11px] text-ss-muted-text hover:text-ss-text disabled:opacity-50">
+          Skip this week
+        </button>
+        <button
+          onClick={onSubmit}
+          disabled={isLocked || saving || !form.confidence || form.value === '' || form.value === null}
+          className={`text-[11.5px] px-4 py-1.5 rounded-md font-medium transition-colors ${
+            (form.confidence && form.value !== '' && !saving && !isLocked)
+              ? 'bg-ss-text text-ss-page hover:opacity-90'
+              : 'bg-ss-muted text-ss-hint cursor-not-allowed'
+          }`}
+        >
+          {saving ? 'Saving…' : 'Submit'}
+        </button>
       </div>
     </div>
   )

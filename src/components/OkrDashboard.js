@@ -668,19 +668,38 @@ export default function OkrDashboard() {
         />
       )}
 
-      {/* Friday reminder banner — show on Friday if user has pending check-ins */}
+      {/* Friday banner — Section 9. Dark Charcoal card with icon, week
+          label, KR count, and a green "Start check-in" CTA. */}
       {!fridayBannerDismissed && isFriday() && pendingCheckInCount > 0 && (
-        <div className="mx-[18px] mt-3 bg-[rgba(186,117,23,0.08)] border border-[rgba(186,117,23,0.2)] rounded-lg px-3 py-2.5 flex items-center gap-3">
-          <span className="text-[13px]">📅</span>
-          <p className="text-[11.5px] text-[#854F0B] flex-1">
-            <strong>Time for your weekly check-in</strong> — {pendingCheckInCount} KR{pendingCheckInCount !== 1 ? 's' : ''} pending
-          </p>
-          <button onClick={openCheckInDrawer}
-            className="text-[11px] px-3 py-1.5 bg-[#2C2C2A] text-[#DFDDD9] rounded-md hover:bg-[#3D3D3A] font-medium">
-            Check in now
+        <div
+          className="mx-[18px] mt-3 rounded-lg px-4 py-3 flex items-center gap-3"
+          style={{ background: '#2C2C2A', color: '#F5F3EF' }}
+        >
+          <span className="text-[18px] leading-none flex-shrink-0">📅</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12.5px] font-medium">
+              Friday check-in — Q{currentQuarter()} Week {(() => {
+                const now = new Date()
+                const q = currentQuarter()
+                const start = new Date(now.getFullYear(), (q - 1) * 3, 1)
+                return Math.max(1, Math.min(13, Math.floor((now - start) / (7 * 24 * 3600 * 1000)) + 1))
+              })()}
+            </p>
+            <p className="text-[10.5px] text-[#9F9A8C] mt-0.5">
+              {pendingCheckInCount} key result{pendingCheckInCount !== 1 ? 's' : ''} need your update · Takes about 2 minutes
+            </p>
+          </div>
+          <button
+            onClick={openCheckInDrawer}
+            className="text-[11.5px] px-4 py-1.5 rounded-md font-medium hover:opacity-90 whitespace-nowrap"
+            style={{ background: '#639922', color: '#FFFFFF' }}
+          >
+            Start check-in
           </button>
-          <button onClick={dismissFridayBanner}
-            className="text-[11px] text-[#9B8C82] hover:text-[#2C2C2A]">
+          <button
+            onClick={dismissFridayBanner}
+            className="text-[11px] text-[#9F9A8C] hover:text-ss-page"
+          >
             Later
           </button>
         </div>
