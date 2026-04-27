@@ -48,20 +48,45 @@ export function assignAvatarColor(existingColors = []) {
   return available[Math.floor(Math.random() * available.length)]
 }
 
-export function getDisplayName(profile) {
-  if (!profile) return 'Unknown'
-  const nick = profile.nickname || profile.full_name || profile.name || 'User'
-  const pos = profile.position || ''
-  return pos ? `${nick} ${pos}` : nick
-}
+// Display name logic — Section 14 of the brief.
+//   Primary display:  nickname        (e.g. "Pim")
+//   Compact subtext:  full_name       (e.g. "Patcharin S.")
+//   Role subtext:     position_title  (e.g. "Brand Communications Strategist")
+//
+// Helpers below produce strings tuned for different surfaces (badges,
+// directory rows, sidebar). Always prefer nickname for the loud display.
 
-export function getCompactName(profile) {
+// Loud single-line label — nickname only when present, falls back to
+// full_name → name → 'User'. Use for chips and short labels.
+export function getDisplayName(profile) {
   return profile?.nickname || profile?.full_name || profile?.name || 'User'
 }
 
+// Same as getDisplayName, kept as a separate name for readability at
+// call sites that pick the compact form deliberately.
+export function getCompactName(profile) {
+  return getDisplayName(profile)
+}
+
+// "Compact full name" — full_name styled muted next to nickname.
+// Returns just the full_name string, ready to be rendered next to the
+// nickname with muted formatting. Empty string if same as nickname.
+export function getFullNameSubtext(profile) {
+  const full = profile?.full_name?.trim() || ''
+  const nick = profile?.nickname?.trim() || ''
+  if (!full || full === nick) return ''
+  return full
+}
+
+// Role subtitle — the person's job title (e.g. on member directory cards).
+export function getRoleSubtext(profile) {
+  return profile?.position_title?.trim() || profile?.position?.trim() || ''
+}
+
+// Brand · Team line for sidebars / card footers.
 export function getSubline(profile) {
   const parts = []
-  if (profile?.squad) parts.push(profile.squad)
+  if (profile?.squad) parts.push(profile.squad === 'KC' ? 'KC · Shared' : profile.squad)
   if (profile?.team) parts.push(profile.team)
   return parts.join(' · ')
 }
@@ -88,20 +113,25 @@ export async function updateProfile(supabase, userId, updates) {
 }
 
 export async function completeOnboarding(supabase, userId, profileData) {
-  // Update profile
+  // Update profile (profiles.position_title, profile_complete is auto-set
+  // by the DB trigger when nickname/full_name/position_title are filled).
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .update({
       ...profileData,
-      full_name: profileData.nickname, // Keep full_name in sync
-      profile_completed: true,
+      // Map legacy callers that send `position` to the new column name.
+      position_title: profileData.position_title || profileData.position,
+      // Default full_name to nickname when not supplied so the trigger flips
+      // profile_complete=true on this same write.
+      full_name: profileData.full_name || profileData.nickname,
     })
     .eq('id', userId)
     .select()
     .single()
   if (profileError) throw profileError
 
-  // Also update the corresponding member record
+  // Sync the cached members row used by the task UI. members table still
+  // uses the legacy `position` column name.
   const { data: member } = await supabase
     .from('members')
     .select('id')
@@ -114,7 +144,7 @@ export async function completeOnboarding(supabase, userId, profileData) {
       .update({
         name: profileData.nickname,
         nickname: profileData.nickname,
-        position: profileData.position,
+        position: profileData.position_title || profileData.position,
         team: profileData.team,
         squad: profileData.squad,
         avatar_color: profileData.avatar_color,

@@ -242,7 +242,7 @@ export default function Sidebar({ user, profile, projects }) {
                 {getDisplayName(profile) || 'User'}
               </p>
               <p className="text-[11.5px] text-[#9F9A8C] truncate leading-tight">
-                {profile?.position || getSubline(profile) || user?.email}
+                {profile?.position_title || profile?.position || getSubline(profile) || user?.email}
               </p>
               {profile?.squad && (
                 <p className="text-[9.5px] text-[#6B665C] truncate leading-tight mt-0.5">

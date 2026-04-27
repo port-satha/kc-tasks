@@ -42,7 +42,7 @@ export default function OnboardingPage() {
         .eq('id', user.id)
         .single()
 
-      if (profile?.profile_completed) {
+      if (profile?.profile_complete) {
         router.push('/')
         return
       }
@@ -50,7 +50,8 @@ export default function OnboardingPage() {
       // Pre-fill from existing data
       if (profile?.nickname) setNickname(profile.nickname)
       if (profile?.full_name && !profile?.nickname) setNickname(profile.full_name)
-      if (profile?.position) setPosition(profile.position)
+      if (profile?.position_title) setPosition(profile.position_title)
+      else if (profile?.position) setPosition(profile.position)
       if (profile?.team) setTeam(profile.team)
       if (profile?.squad) setSquad(profile.squad)
 
@@ -84,7 +85,7 @@ export default function OnboardingPage() {
     try {
       await completeOnboarding(supabase, user.id, {
         nickname: nickname.trim(),
-        position: position.trim(),
+        position_title: position.trim(),
         team,
         squad,
         avatar_color: avatarColor,

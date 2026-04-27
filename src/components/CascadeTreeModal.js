@@ -146,7 +146,7 @@ function TreeNode({ node, depth, targetId, onNavigate }) {
             )}
           </p>
           {!isKrNode && !isLocked && node.owner && (
-            <p className="text-[10px] text-[#9B8C82] truncate">{node.owner.nickname} {node.owner.position || ''}</p>
+            <p className="text-[10px] text-[#9B8C82] truncate">{node.owner.nickname} {node.owner.position_title || ''}</p>
           )}
         </div>
         {!isLocked && (

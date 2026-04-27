@@ -21,7 +21,7 @@ export default function ProfileEdit({ onClose, onSave }) {
   useEffect(() => {
     if (profile) {
       setNickname(profile.nickname || profile.full_name || '')
-      setPosition(profile.position || '')
+      setPosition(profile.position_title || profile.position || '')
       setTeam(profile.team || '')
       setSquad(profile.squad || '')
       setAvatarColor(profile.avatar_color || AVATAR_COLORS[0])
@@ -83,7 +83,7 @@ export default function ProfileEdit({ onClose, onSave }) {
     try {
       const updates = {
         nickname: nickname.trim(),
-        position: position.trim(),
+        position_title: position.trim(),  // profiles column is now position_title
         team,
         squad,
         avatar_color: avatarColor,

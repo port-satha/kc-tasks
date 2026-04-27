@@ -29,8 +29,8 @@ export default function AppShell({ children }) {
   const profileNeedsCompletion =
     !p?.nickname?.trim() ||
     !p?.full_name?.trim() ||
-    !p?.position?.trim() ||
-    p?.profile_completed === false
+    !p?.position_title?.trim() ||
+    p?.profile_complete === false
 
   return (
     <div className="min-h-screen bg-ss-page flex">

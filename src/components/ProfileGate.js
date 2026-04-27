@@ -16,7 +16,7 @@ export default function ProfileGate({ profile, onComplete }) {
   // Required (self-completed) fields
   const [nickname, setNickname]   = useState(profile?.nickname || '')
   const [fullName, setFullName]   = useState(profile?.full_name || '')
-  const [position, setPosition]   = useState(profile?.position || '')
+  const [positionTitle, setPositionTitle] = useState(profile?.position_title || '')
 
   // Optional (self-completed) fields
   const [startDate, setStartDate] = useState(profile?.start_date || '')
@@ -43,8 +43,8 @@ export default function ProfileGate({ profile, onComplete }) {
   }, [supabase, profile?.manager_id])
 
   const requiredFilled = useMemo(() => {
-    return [nickname, fullName, position].filter(v => (v || '').trim().length > 0).length
-  }, [nickname, fullName, position])
+    return [nickname, fullName, positionTitle].filter(v => (v || '').trim().length > 0).length
+  }, [nickname, fullName, positionTitle])
   const allRequiredFilled = requiredFilled === 3
 
   const chapter = useMemo(() => {
@@ -59,12 +59,14 @@ export default function ProfileGate({ profile, onComplete }) {
     setErr('')
     try {
       const updates = {
-        nickname:  nickname.trim(),
-        full_name: fullName.trim(),
-        position:  position.trim(),
-        start_date: startDate || null,
-        line_id:    lineId.trim() || null,
-        profile_completed: true,
+        nickname:        nickname.trim(),
+        full_name:       fullName.trim(),
+        position_title:  positionTitle.trim(),
+        start_date:      startDate || null,
+        line_id:         lineId.trim() || null,
+        // profile_complete is auto-set by the DB trigger when nickname,
+        // full_name, and position_title are all non-empty — no need to
+        // include it in the update payload.
       }
       const { error } = await supabase
         .from('profiles')
@@ -161,8 +163,8 @@ export default function ProfileGate({ profile, onComplete }) {
             <label className={fieldLabel}>Position / job title *</label>
             <input
               type="text"
-              value={position}
-              onChange={e => setPosition(e.target.value)}
+              value={positionTitle}
+              onChange={e => setPositionTitle(e.target.value)}
               required
               maxLength={80}
               placeholder="e.g. Content Creator"

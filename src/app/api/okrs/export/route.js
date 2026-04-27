@@ -140,7 +140,7 @@ export async function GET(request) {
   // Default: objectives export (one row per objective)
   let q = supabase
     .from('objectives')
-    .select('*, owner:profiles!owner_id(id, nickname, position, team, squad, manager_id), key_results(*, owner:profiles!owner_id(nickname)), parent:objectives!parent_objective_id(id, title)')
+    .select('*, owner:profiles!owner_id(id, nickname, position_title, team, squad, manager_id), key_results!objective_id(*, owner:profiles!owner_id(nickname)), parent:objectives!parent_objective_id(id, title)')
     .eq('year', year)
     .order('created_at', { ascending: true })
   if (quarter) q = q.eq('quarter', parseInt(quarter))
@@ -199,7 +199,7 @@ export async function GET(request) {
     const managerNickname = o.owner?.manager_id ? (mgrs[o.owner.manager_id] || '') : ''
     const row = [
       o.year, o.quarter,
-      o.owner?.id, o.owner?.nickname, o.owner?.position, o.owner?.team, o.owner?.squad,
+      o.owner?.id, o.owner?.nickname, o.owner?.position_title, o.owner?.team, o.owner?.squad,
       managerNickname,
       o.id, o.title, o.level, o.brand || '', (o.tags || []).join('|'),
       o.parent?.title || '',

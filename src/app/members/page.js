@@ -51,13 +51,14 @@ function chapterOf(member) {
 }
 
 function isIncomplete(member) {
-  // Treat the cached profile_completed flag as the source of truth, but also
-  // flag rows where the linked profile is missing required fields.
-  if (!member?.profile) return true   // no profile yet
-  if (member.profile.profile_completed === false) return true
+  // The DB trigger keeps profile_complete in sync with the three required
+  // fields, so checking the flag is sufficient. We also treat unlinked
+  // member rows (no profile_id yet) as incomplete.
+  if (!member?.profile) return true
+  if (member.profile.profile_complete === false) return true
   if (!member.profile.nickname?.trim()) return true
   if (!member.profile.full_name?.trim()) return true
-  if (!member.profile.position?.trim()) return true
+  if (!member.profile.position_title?.trim()) return true
   return false
 }
 
@@ -354,7 +355,7 @@ function MemberCard({ member: m, isLast, onRoleChange, onSquadChange, onDelete, 
   const profile     = m.profile || {}
   const nickname    = profile.nickname || m.nickname || m.name || 'User'
   const fullName    = profile.full_name || ''
-  const position    = profile.position || m.position || ''
+  const position    = profile.position_title || profile.position || m.position || ''
   const squad       = profile.squad || m.squad || ''
   const team        = profile.team || m.team || ''
   const profileRole = profile.role || null

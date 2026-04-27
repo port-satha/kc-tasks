@@ -990,7 +990,7 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
             })}
           </div>
           {obj.owner && (
-            <p className="text-[10px] text-[#9B8C82] mt-1">Owner: {obj.owner.nickname} {obj.owner.position}</p>
+            <p className="text-[10px] text-[#9B8C82] mt-1">Owner: {obj.owner.nickname} {obj.owner.position_title}</p>
           )}
         </div>
         <div className="text-right flex-shrink-0">
@@ -1014,7 +1014,7 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
                 <div className="flex-1 min-w-0">
                   <p className="text-[11.5px] text-[#2C2C2A] leading-tight">{kr.title}</p>
                   {kr.owner && (
-                    <p className="text-[10px] text-[#9B8C82] mt-0.5">{kr.owner.nickname} {kr.owner.position}</p>
+                    <p className="text-[10px] text-[#9B8C82] mt-0.5">{kr.owner.nickname} {kr.owner.position_title}</p>
                   )}
                   {krHistory && krHistory.length >= 2 && (
                     <div className="mt-1"><KrSparkline checkIns={krHistory} kr={kr} /></div>
@@ -1878,7 +1878,7 @@ function TeamManageView({ reports, objectives, year, quarter, expandedOkrs, onTo
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-medium text-[#2C2C2A] truncate">
-                      {r.nickname}{r.position && <span className="text-[#9B8C82] font-normal"> {r.position}</span>}
+                      {r.nickname}{r.position_title && <span className="text-[#9B8C82] font-normal"> {r.position_title}</span>}
                     </p>
                     <p className="text-[10px] text-[#B7A99D] truncate">
                       {r.squad || '—'} · {r.team || '—'}

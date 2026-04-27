@@ -48,18 +48,19 @@ export async function updateSession(request) {
     return NextResponse.redirect(url)
   }
 
-  // Check if profile is completed — redirect to onboarding if not
-  // Skip this check for /onboarding, /login, /api routes
-  // Wrapped in try-catch in case migration hasn't been run yet (profile_completed column may not exist)
+  // Check if profile is completed — the AppShell now mounts a non-dismissable
+  // ProfileGate modal in front of every authenticated route, so the
+  // /onboarding redirect here is largely vestigial. Kept as a fallback in
+  // case AppShell isn't on the requested route.
   if (user && !pathname.startsWith('/onboarding') && !pathname.startsWith('/login') && !pathname.startsWith('/api')) {
     try {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('profile_completed')
+        .select('profile_complete')
         .eq('id', user.id)
         .single()
 
-      if (profile && profile.profile_completed === false) {
+      if (profile && profile.profile_complete === false) {
         const url = request.nextUrl.clone()
         url.pathname = '/onboarding'
         return NextResponse.redirect(url)

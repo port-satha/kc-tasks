@@ -24,7 +24,7 @@ export default function OrgPage() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, nickname, full_name, position, team, squad, manager_id, avatar_color, avatar_url, role')
+          .select('id, nickname, full_name, position_title, team, squad, manager_id, avatar_color, avatar_url, role')
           .order('nickname')
         if (error) throw error
         setProfiles(data || [])
@@ -54,7 +54,7 @@ export default function OrgPage() {
     const s = search.toLowerCase()
     return (p.nickname || '').toLowerCase().includes(s)
       || (p.full_name || '').toLowerCase().includes(s)
-      || (p.position || '').toLowerCase().includes(s)
+      || (p.position_title || '').toLowerCase().includes(s)
   })
 
   const managerOf = (id) => profiles.find(p => p.id === id)
@@ -94,7 +94,7 @@ export default function OrgPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-medium text-[#2C2C2A] truncate">
                         {p.nickname || p.full_name}
-                        {p.position && <span className="text-[#9B8C82] font-normal"> · {p.position}</span>}
+                        {p.position_title && <span className="text-[#9B8C82] font-normal"> · {p.position_title}</span>}
                       </p>
                       <p className="text-[10px] text-[#B7A99D] truncate">
                         {p.squad || 'No squad'} · {p.team || 'No team'}
@@ -110,7 +110,7 @@ export default function OrgPage() {
                         className="text-[12px] bg-[#DFDDD9] border border-[rgba(0,0,0,0.08)] rounded-md px-2 py-1 min-w-[140px] focus:outline-none focus:border-[#2C2C2A]">
                         <option value="">— None —</option>
                         {eligibleManagers.map(m => (
-                          <option key={m.id} value={m.id}>{m.nickname || m.full_name} {m.position || ''}</option>
+                          <option key={m.id} value={m.id}>{m.nickname || m.full_name} {m.position_title || ''}</option>
                         ))}
                       </select>
                     </div>
