@@ -25,6 +25,7 @@ import ChapterDrawer from './ChapterDrawer'
 import ContextBar from './ContextBar'
 import KpiMilestoneCard from './KpiMilestoneCard'
 import MainTabs from './MainTabs'
+import OkrCreateWizard from './OkrCreateWizard'
 
 const CascadeTreeModal = dynamic(() => import('./CascadeTreeModal'), { ssr: false })
 const CheckInDrawer = dynamic(() => import('./CheckInDrawer'), { ssr: false })
@@ -795,8 +796,31 @@ export default function OkrDashboard() {
         />
       )}
 
-      {/* OKR Form modal */}
-      {showOkrForm && (canCreate || viewMode === 'mine') && (
+      {/* OKR creation wizard — Section 7. Used for NEW OKRs only;
+          edit-mode falls through to the legacy OkrFormModal below. */}
+      {showOkrForm && !editingOkr && (canCreate || viewMode === 'mine') && (
+        <OkrCreateWizard
+          level={viewMode === 'mine' ? 'individual' : (levelSelection.level || 'brand')}
+          defaultBrand={levelSelection.brand || profile?.squad || 'KC'}
+          defaultTeam={levelSelection.team}
+          defaultYear={year}
+          defaultQuarter={quarter}
+          currentProfile={profile}
+          members={members}
+          supabase={supabase}
+          onSaveDraft={handleSaveOkr}
+          onSubmitForApproval={async (payload) => {
+            // Create as draft first, then flip approval_status. The
+            // existing handleSaveOkr already creates + reloads; we just
+            // call it here. Auto-approval-request can be a follow-up.
+            await handleSaveOkr(payload)
+          }}
+          onClose={() => { setShowOkrForm(false); setEditingOkr(null) }}
+        />
+      )}
+
+      {/* OKR Form modal — edit mode only (legacy single-modal form) */}
+      {showOkrForm && editingOkr && (canCreate || viewMode === 'mine') && (
         <OkrFormModal
           objective={editingOkr}
           year={year}
