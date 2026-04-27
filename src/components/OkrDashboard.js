@@ -29,6 +29,8 @@ import OkrCreateWizard from './OkrCreateWizard'
 import ApprovalStatusPill from './ApprovalStatusPill'
 import OnboardingEmptyState from './OnboardingEmptyState'
 
+const CascadeTree = dynamic(() => import('./CascadeTree'), { ssr: false })
+
 const CascadeTreeModal = dynamic(() => import('./CascadeTreeModal'), { ssr: false })
 const CheckInDrawer = dynamic(() => import('./CheckInDrawer'), { ssr: false })
 const ReflectionModal = dynamic(() => import('./ReflectionModal'), { ssr: false })
@@ -92,6 +94,7 @@ export default function OkrDashboard() {
   const [pendingCheckInCount, setPendingCheckInCount] = useState(0)
   const [fridayBannerDismissed, setFridayBannerDismissed] = useState(false)
   const [reflectionState, setReflectionState] = useState(null) // { objective, mode }
+  const [showAlignmentTree, setShowAlignmentTree] = useState(false) // Section 11
   const [kpiUpdating, setKpiUpdating] = useState(null)
   const [latestCheckIns, setLatestCheckIns] = useState({}) // krId -> check-in
   const [checkInsByKr, setCheckInsByKr] = useState({}) // krId -> [check-ins oldest→newest]
@@ -829,12 +832,29 @@ export default function OkrDashboard() {
               <h2 className="text-[9.5px] uppercase tracking-[1px] text-[#9B8C82] font-medium">
                 {levelTitle(levelSelection)} OKRs — {quarter === 'annual' ? 'Annual' : `Q${quarter}`} {year}
               </h2>
-              {canCreate && (
-                <button onClick={() => { setEditingOkr(null); setShowOkrForm(true) }}
-                  className="text-[10px] px-2.5 py-1 bg-[#2C2C2A] text-[#DFDDD9] rounded-full hover:bg-[#3D3D3A]">
-                  + Add objective
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {/* Section 11 — alignment tree, only meaningful at brand level */}
+                {levelSelection.level === 'brand' && levelSelection.brand && (
+                  <button
+                    onClick={() => setShowAlignmentTree(true)}
+                    className="text-[10px] px-2.5 py-1 border border-ss-divider text-ss-muted-text rounded-full hover:bg-ss-hover hover:text-ss-text inline-flex items-center gap-1"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <path d="M6 2v3M6 5L3 7M6 5l3 2M3 7v3M9 7v3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                      <circle cx="6" cy="2" r="1" stroke="currentColor" strokeWidth="1.2" />
+                      <circle cx="3" cy="10" r="1" stroke="currentColor" strokeWidth="1.2" />
+                      <circle cx="9" cy="10" r="1" stroke="currentColor" strokeWidth="1.2" />
+                    </svg>
+                    View alignment tree
+                  </button>
+                )}
+                {canCreate && (
+                  <button onClick={() => { setEditingOkr(null); setShowOkrForm(true) }}
+                    className="text-[10px] px-2.5 py-1 bg-[#2C2C2A] text-[#DFDDD9] rounded-full hover:bg-[#3D3D3A]">
+                    + Add objective
+                  </button>
+                )}
+              </div>
             </div>
             {objectives.length === 0 ? (
               <p className="text-[11px] text-[#B7A99D] italic py-3">No objectives for this quarter yet.</p>
@@ -915,7 +935,7 @@ export default function OkrDashboard() {
         />
       )}
 
-      {/* Cascade tree modal */}
+      {/* Cascade tree modal — opened from a single OKR card's "View tree" link */}
       {treeObjectiveId && (
         <CascadeTreeModal
           objectiveId={treeObjectiveId}
@@ -926,6 +946,23 @@ export default function OkrDashboard() {
             if (node.level === 'brand') setLevelSelection({ level: 'brand', brand: node.brand, team: null })
             else if (node.level === 'team') setLevelSelection({ level: 'team', brand: node.brand || null, team: node.team })
             setTreeObjectiveId(null)
+          }}
+        />
+      )}
+
+      {/* Brand-rooted alignment tree (Section 11) — opened from the
+          Brand OKR section header's "View alignment tree" button. */}
+      {showAlignmentTree && (
+        <CascadeTree
+          year={year}
+          brand={levelSelection.brand}
+          onClose={() => setShowAlignmentTree(false)}
+          onNavigate={(node) => {
+            // Drill into the team OKR view when a node is clicked.
+            if (node.level === 'team') {
+              setLevelSelection({ level: 'team', brand: node.brand || null, team: node.team })
+              setShowAlignmentTree(false)
+            }
           }}
         />
       )}
