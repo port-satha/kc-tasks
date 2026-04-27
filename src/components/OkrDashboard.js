@@ -26,6 +26,7 @@ import ContextBar from './ContextBar'
 import KpiMilestoneCard from './KpiMilestoneCard'
 import MainTabs from './MainTabs'
 import OkrCreateWizard from './OkrCreateWizard'
+import ApprovalStatusPill from './ApprovalStatusPill'
 
 const CascadeTreeModal = dynamic(() => import('./CascadeTreeModal'), { ssr: false })
 const CheckInDrawer = dynamic(() => import('./CheckInDrawer'), { ssr: false })
@@ -148,6 +149,31 @@ export default function OkrDashboard() {
   useEffect(() => {
     if (!user?.id) return
     countDirectReports(supabase, user.id).then(setReportsCount).catch(() => setReportsCount(0))
+  }, [supabase, user?.id])
+
+  // Section 8 — realtime subscription so an OKR owner sees their
+  // approval_status flip the moment a manager approves or requests
+  // changes. Filtered to rows the current user owns; debounced reload
+  // (300 ms) skips realtime echoes of our own optimistic writes.
+  useEffect(() => {
+    if (!user?.id) return
+    const channel = supabase
+      .channel(`okr-status-${user.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'objectives', filter: `owner_id=eq.${user.id}` },
+        () => {
+          // Lightweight: just reload the user's view. Debounced via timer
+          // to coalesce rapid bursts.
+          if (typeof window === 'undefined') return
+          if (window.__kc_okr_reload_t) clearTimeout(window.__kc_okr_reload_t)
+          window.__kc_okr_reload_t = setTimeout(() => { load() }, 300)
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  // load() identity changes by design; we only care about (user, supabase) here
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, user?.id])
 
   // Load pending check-in count (used by Friday banner + badge)
@@ -402,7 +428,21 @@ export default function OkrDashboard() {
     } catch (err) { alert('Failed: ' + err.message) }
   }
 
+  // Optimistic helper — patch an objective inside reportsData.objectives in
+  // place so the manager sees the status change instantly. The DB write
+  // fires after; load() reconciles when it returns.
+  const patchReportObjectiveLocal = (objId, patch) => {
+    setReportsData(prev => ({
+      ...prev,
+      objectives: (prev.objectives || []).map(o =>
+        o.id === objId ? { ...o, ...patch } : o
+      ),
+    }))
+  }
+
   const handleApprove = async (obj) => {
+    // Optimistic update — flip the badge before the DB round-trip.
+    patchReportObjectiveLocal(obj.id, { approval_status: 'approved', change_request_note: null })
     try {
       await approveObjective(supabase, {
         objectiveId: obj.id,
@@ -411,11 +451,19 @@ export default function OkrDashboard() {
         approverNickname: profile?.nickname,
       })
       await load()
-    } catch (err) { alert('Failed: ' + err.message) }
+    } catch (err) {
+      // Roll back the optimistic flip on failure.
+      patchReportObjectiveLocal(obj.id, { approval_status: 'pending_approval' })
+      alert('Failed: ' + err.message)
+    }
   }
 
   const handleRequestChanges = async (obj, note) => {
     if (!note || !note.trim()) { alert('Please add a note for the change request.'); return }
+    patchReportObjectiveLocal(obj.id, {
+      approval_status: 'changes_requested',
+      change_request_note: note.trim(),
+    })
     try {
       await requestObjectiveChanges(supabase, {
         objectiveId: obj.id,
@@ -425,7 +473,10 @@ export default function OkrDashboard() {
         approverNickname: profile?.nickname,
       })
       await load()
-    } catch (err) { alert('Failed: ' + err.message) }
+    } catch (err) {
+      patchReportObjectiveLocal(obj.id, { approval_status: 'pending_approval' })
+      alert('Failed: ' + err.message)
+    }
   }
 
   const handleDeleteOkr = async (okrId) => {
@@ -1021,7 +1072,12 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
               {hasKrParent ? 'Cascades from a parent KR' : 'Cascades from parent objective'} · View tree
             </button>
           )}
-          <p className="text-[12.5px] font-medium text-[#2C2C2A] leading-[1.4]">{obj.title}</p>
+          <div className="flex items-start gap-2">
+            <p className="text-[12.5px] font-medium text-[#2C2C2A] leading-[1.4] flex-1">{obj.title}</p>
+            {obj.approval_status && obj.approval_status !== 'approved' && (
+              <ApprovalStatusPill status={obj.approval_status} className="flex-shrink-0 mt-0.5" />
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
             {obj.is_annual && (
               <span className="text-[9px] px-[7px] py-[2px] rounded-[10px] font-medium"
@@ -1668,21 +1724,9 @@ function ModalActions({ onClose, submitLabel }) {
 // ============================================================
 // Phase 3: My OKRs view
 // ============================================================
-const APPROVAL_BADGE = {
-  draft:              { bg: 'rgba(44,44,42,0.08)',   fg: '#5F5E5A', label: 'Draft' },
-  pending_approval:   { bg: 'rgba(186,117,23,0.08)', fg: '#854F0B', label: 'Pending approval' },
-  approved:           { bg: 'rgba(99,153,34,0.10)',  fg: '#3B6D11', label: '✓ Manager approved' },
-  changes_requested:  { bg: 'rgba(226,75,74,0.08)',  fg: '#A32D2D', label: 'Changes requested' },
-}
-
-function ApprovalBadge({ status }) {
-  const b = APPROVAL_BADGE[status] || APPROVAL_BADGE.draft
-  return (
-    <span className="text-[9.5px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ background: b.bg, color: b.fg }}>
-      {b.label}
-    </span>
-  )
-}
+// Local alias kept so the ~3 inline JSX call sites below don't need rewiring.
+// New code should import ApprovalStatusPill directly. Section 8 of the brief.
+const ApprovalBadge = ApprovalStatusPill
 
 function MyOkrsView({ profile, objectives, year, quarter, expandedOkrs, onToggleExpand, onAdd, onEdit, onDelete, onRequestApproval, onViewTree, onCheckInKr, onReflect, latestCheckIns, checkInsByKr, reflectionsByObjective }) {
   const pendingCount = objectives.filter(o => o.approval_status === 'pending_approval').length
@@ -1905,7 +1949,8 @@ function MyObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onRequestA
 function TeamManageView({ reports, objectives, year, quarter, expandedOkrs, onToggleExpand, onApprove, onRequestChanges, onViewTree, onReflect, latestCheckIns, checkInsByKr, reflectionsByObjective }) {
   const pendingCount = objectives.filter(o => o.approval_status === 'pending_approval').length
   const [selectedReportId, setSelectedReportId] = useState(null)
-  const [changesNote, setChangesNote] = useState({ objId: null, note: '' })
+  // changesNote modal removed — Request changes is now an inline expansion
+  // inside ReportOkrCard (Section 8 of the brief).
 
   const byReport = useMemo(() => {
     const map = {}
@@ -1990,7 +2035,7 @@ function TeamManageView({ reports, objectives, year, quarter, expandedOkrs, onTo
                   expanded={!!expandedOkrs[obj.id]}
                   onToggle={() => onToggleExpand(obj.id)}
                   onApprove={onApprove}
-                  onOpenChanges={() => setChangesNote({ objId: obj.id, note: '' })}
+                  onRequestChanges={onRequestChanges}
                   onViewTree={onViewTree}
                   onReflect={onReflect}
                   checkInsByKr={checkInsByKr}
@@ -2001,41 +2046,12 @@ function TeamManageView({ reports, objectives, year, quarter, expandedOkrs, onTo
         </div>
       )}
 
-      {/* Request Changes modal */}
-      {changesNote.objId && (
-        <ModalShell title="Request changes" onClose={() => setChangesNote({ objId: null, note: '' })}>
-          <div className="space-y-3">
-            <p className="text-[11.5px] text-[#2C2C2A]">
-              What needs to change on <strong>"{objectives.find(o => o.id === changesNote.objId)?.title}"</strong>?
-            </p>
-            <textarea autoFocus value={changesNote.note}
-              onChange={e => setChangesNote({ ...changesNote, note: e.target.value })}
-              rows={4}
-              placeholder="e.g. KR2 is too vague — make it measurable with a specific target."
-              className={inputCls} />
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setChangesNote({ objId: null, note: '' })}
-                className="text-[12px] px-4 py-1.5 border border-[rgba(0,0,0,0.08)] text-[#9B8C82] rounded-md hover:bg-[rgba(0,0,0,0.03)]">
-                Cancel
-              </button>
-              <button onClick={() => {
-                  const obj = objectives.find(o => o.id === changesNote.objId)
-                  if (obj) onRequestChanges(obj, changesNote.note)
-                  setChangesNote({ objId: null, note: '' })
-                }}
-                disabled={!changesNote.note.trim()}
-                className="text-[12px] px-4 py-1.5 bg-[#2C2C2A] text-[#DFDDD9] rounded-md hover:bg-[#3D3D3A] font-medium disabled:opacity-50">
-                Send request
-              </button>
-            </div>
-          </div>
-        </ModalShell>
-      )}
+      {/* Request Changes — moved inline into ReportOkrCard (Section 8) */}
     </div>
   )
 }
 
-function ReportOkrCard({ obj, expanded, onToggle, onApprove, onOpenChanges, onViewTree, onReflect, checkInsByKr, reflection }) {
+function ReportOkrCard({ obj, expanded, onToggle, onApprove, onRequestChanges, onViewTree, onReflect, checkInsByKr, reflection }) {
   const pct = calcObjectivePercent(obj)
   const color = progressColor(pct)
   const status = obj.approval_status || 'draft'
@@ -2090,22 +2106,12 @@ function ReportOkrCard({ obj, expanded, onToggle, onApprove, onOpenChanges, onVi
             })}
           </div>
           {isPending && (
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => onApprove(obj)}
-                className="text-[10.5px] px-3 py-1.5 bg-[#2C2C2A] text-[#DFDDD9] rounded-md hover:bg-[#3D3D3A] font-medium">
-                ✓ Approve
-              </button>
-              <button onClick={onOpenChanges}
-                className="text-[10.5px] px-3 py-1.5 border border-[rgba(0,0,0,0.1)] text-[#2C2C2A] rounded-md hover:bg-[rgba(0,0,0,0.03)]">
-                Request changes
-              </button>
-              {obj.parent_objective_id && (
-                <button onClick={() => onViewTree?.(obj.id)}
-                  className="text-[10px] text-[#378ADD] hover:underline ml-auto self-center">
-                  Cascade tree
-                </button>
-              )}
-            </div>
+            <ManagerReviewActions
+              obj={obj}
+              onApprove={onApprove}
+              onRequestChanges={onRequestChanges}
+              onViewTree={onViewTree}
+            />
           )}
           {/* Manager reflection */}
           {status === 'approved' && onReflect && !reflection?.finalized_at && (
@@ -2119,6 +2125,84 @@ function ReportOkrCard({ obj, expanded, onToggle, onApprove, onOpenChanges, onVi
           {reflection?.finalized_at && (
             <p className="text-[10px] text-[#3B6D11] mt-2">✓ Reflection finalized</p>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Inline manager review actions — Approve / Request changes (with
+// expanding textarea). Section 8 of the brief replaces the previous
+// modal-based "Request changes" flow.
+function ManagerReviewActions({ obj, onApprove, onRequestChanges, onViewTree }) {
+  const [showChanges, setShowChanges] = useState(false)
+  const [note, setNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleApprove = async () => {
+    setSubmitting(true)
+    try { await onApprove(obj) } finally { setSubmitting(false) }
+  }
+  const handleSend = async () => {
+    if (!note.trim()) return
+    setSubmitting(true)
+    try {
+      await onRequestChanges(obj, note.trim())
+      setShowChanges(false); setNote('')
+    } finally { setSubmitting(false) }
+  }
+
+  return (
+    <div className="pt-2 space-y-2">
+      <div className="flex gap-2 items-center flex-wrap">
+        <button
+          onClick={handleApprove}
+          disabled={submitting}
+          className="text-[10.5px] px-3 py-1.5 bg-[#639922] text-white rounded-md hover:bg-[#557F1B] font-medium disabled:opacity-50">
+          ✓ Approve
+        </button>
+        <button
+          onClick={() => setShowChanges(v => !v)}
+          className={`text-[10.5px] px-3 py-1.5 border rounded-md font-medium ${
+            showChanges
+              ? 'bg-ss-muted border-ss-divider text-ss-text'
+              : 'border-[rgba(0,0,0,0.1)] text-[#2C2C2A] hover:bg-[rgba(0,0,0,0.03)]'
+          }`}>
+          {showChanges ? 'Cancel changes' : 'Request changes'}
+        </button>
+        {obj.parent_objective_id && (
+          <button onClick={() => onViewTree?.(obj.id)}
+            className="text-[10px] text-[#378ADD] hover:underline ml-auto self-center">
+            Cascade tree
+          </button>
+        )}
+      </div>
+      {showChanges && (
+        <div className="bg-ss-muted rounded-md p-3 space-y-2">
+          <p className="text-[10.5px] text-ss-muted-text">
+            What needs to change before this can be approved?
+          </p>
+          <textarea
+            autoFocus
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            rows={3}
+            placeholder="e.g. KR2 is too vague — make it measurable with a specific target."
+            className="w-full text-[12px] border border-ss-divider rounded-md px-2.5 py-2 bg-ss-page text-ss-text placeholder-ss-hint focus:outline-none focus:border-ss-text"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => { setShowChanges(false); setNote('') }}
+              className="text-[10.5px] px-3 py-1.5 text-ss-muted-text hover:text-ss-text">
+              Cancel
+            </button>
+            <button
+              onClick={handleSend}
+              disabled={!note.trim() || submitting}
+              className="text-[10.5px] px-3 py-1.5 bg-ss-text text-ss-page rounded-md font-medium disabled:opacity-50">
+              Send request
+            </button>
+          </div>
         </div>
       )}
     </div>
