@@ -20,6 +20,8 @@ import {
   fetchLocks, isPeriodLocked, createEditRequest,
 } from '../lib/okr'
 import KrSparkline from './KrSparkline'
+import ChapterDrawer from './ChapterDrawer'
+import ContextBar from './ContextBar'
 
 const CascadeTreeModal = dynamic(() => import('./CascadeTreeModal'), { ssr: false })
 const CheckInDrawer = dynamic(() => import('./CheckInDrawer'), { ssr: false })
@@ -406,11 +408,7 @@ export default function OkrDashboard() {
               value={year}
               onChange={setYear}
             />
-            <Segmented
-              options={[{value:1,label:'Q1'},{value:2,label:'Q2'},{value:3,label:'Q3'},{value:4,label:'Q4'},{value:'annual',label:'Annual'}]}
-              value={quarter}
-              onChange={setQuarter}
-            />
+            {/* Quarter selector now lives inside ContextBar (Section 4) */}
             {/* Phase 5: Export button for people / admin */}
             {(isAdmin || profile?.role === 'people') && (
               <div className="relative group">
@@ -437,88 +435,115 @@ export default function OkrDashboard() {
         </div>
       </div>
 
-      {/* Level switcher — Phase 3: views + brand + team levels */}
-      <div className="px-[18px] py-[10px] mt-2 border-b border-[rgba(0,0,0,0.06)] flex gap-1.5 flex-wrap items-center">
-        {/* My OKRs pill — always visible for everyone */}
+      {/* ============================================================
+          Section 4 — Top navigation pill bar.
+          Three layers stacked: pill bar (dark) → optional chapter
+          drawer (slightly lighter dark) → context bar (light Linen).
+          ============================================================ */}
+
+      {/* Pill bar — dark band */}
+      <div
+        className="px-[18px] py-[10px] mt-2 flex gap-1.5 flex-wrap items-center"
+        style={{ background: '#2C2C2A' }}
+      >
+        {/* Personal pills */}
         <button
-          onClick={() => setViewMode('mine')}
-          className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap ${
-            viewMode === 'mine' ? 'bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'text-[#9B8C82] hover:bg-[rgba(0,0,0,0.03)]'
+          onClick={() => { setViewMode('mine'); setExpandedChapter(null) }}
+          className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium ${
+            viewMode === 'mine'
+              ? 'bg-ss-card text-ss-text'
+              : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
           }`}>
           My OKRs
         </button>
-        {/* Team I manage — only when user has direct reports */}
         {reportsCount > 0 && (
           <button
-            onClick={() => setViewMode('team-manage')}
-            className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap ${
-              viewMode === 'team-manage' ? 'bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'text-[#9B8C82] hover:bg-[rgba(0,0,0,0.03)]'
+            onClick={() => { setViewMode('team-manage'); setExpandedChapter(null) }}
+            className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium ${
+              viewMode === 'team-manage'
+                ? 'bg-ss-card text-ss-text'
+                : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
             }`}>
             Team I manage
           </button>
         )}
-        <span className="w-px h-4 bg-[rgba(0,0,0,0.1)] mx-1" />
 
-        {/* Brand pills — small label clarifies these are the 3 KC brands */}
-        <span className="text-[9px] uppercase tracking-[1px] text-[#B7A99D] font-medium mr-0.5 hidden md:inline">
+        <span className="w-px h-4 bg-[rgba(255,255,255,0.15)] mx-1" />
+
+        {/* Brand pills */}
+        <span className="text-[9.5px] uppercase tracking-[1px] text-[#9F9A8C] font-medium mr-0.5 hidden md:inline">
           Brands
         </span>
         {[
-          { brand: 'onest', label: 'onest', color: '#2D5016' },
-          { brand: 'grubby', label: 'grubby', color: '#1B4D2A' },
-          { brand: 'KC', label: 'KC · Shared', color: '#5F5E5A' },
+          { brand: 'onest',  label: 'onest',       dot: '#2D5016', activeBg: '#2D5016', activeFg: '#C8E6A8' },
+          { brand: 'grubby', label: 'grubby',      dot: '#1B4D2A', activeBg: '#1B4D2A', activeFg: '#A8D4B0' },
+          { brand: 'KC',     label: 'KC · Shared', dot: '#888780', activeBg: '#4A4A47', activeFg: '#D4CFC9' },
         ].map(b => {
           const active = viewMode === 'level' && levelSelection.level === 'brand' && levelSelection.brand === b.brand
           return (
             <button key={b.brand}
-              onClick={() => { setViewMode('level'); setLevelSelection({ level: 'brand', brand: b.brand, team: null }) }}
-              style={!active ? { color: b.color } : undefined}
-              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap ${
-                active ? 'bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'text-[#9B8C82] hover:bg-[rgba(0,0,0,0.03)]'
+              onClick={() => {
+                setViewMode('level')
+                setLevelSelection({ level: 'brand', brand: b.brand, team: null })
+                setExpandedChapter(null)
+              }}
+              style={active ? { background: b.activeBg, color: b.activeFg } : undefined}
+              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1.5 ${
+                active ? '' : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
               }`}>
+              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: b.dot }} />
               {b.label}
             </button>
           )
         })}
 
-        <span className="w-px h-4 bg-[rgba(0,0,0,0.1)] mx-1" />
+        <span className="w-px h-4 bg-[rgba(255,255,255,0.15)] mx-1" />
 
-        {/* Chapter label — clarifies the right-side pills are chapters
-            (groups of teams), not brands. */}
-        <span className="text-[9px] uppercase tracking-[1px] text-[#B7A99D] font-medium mr-0.5 hidden md:inline">
+        {/* Chapter pills — disclosure only. Click rotates the chevron
+            and reveals the chapter sub-drawer below. */}
+        <span className="text-[9.5px] uppercase tracking-[1px] text-[#9F9A8C] font-medium mr-0.5 hidden md:inline">
           Chapters
         </span>
-
-        {/* Chapter pills — disclosure only. Click toggles teams inline;
-            chapters are not an OKR level (Brand → Team → Individual). */}
         {CHAPTERS.map(chapter => {
-          const teamInChapterActive = viewMode === 'level' && levelSelection.level === 'team' && TEAM_TO_CHAPTER[levelSelection.team] === chapter
-          const showTeamPills = expandedChapter === chapter || teamInChapterActive
+          const teamInChapterActive = viewMode === 'level' && levelSelection.level === 'team'
+            && TEAM_TO_CHAPTER[levelSelection.team] === chapter
+          const isOpen = expandedChapter === chapter
+          const showActive = isOpen || teamInChapterActive
+          const label = chapter === 'Strategy' ? 'Strategy & BD' : chapter
           return (
-            <span key={chapter} className="flex items-center gap-1.5">
-              <button
-                onClick={() => setExpandedChapter(showTeamPills ? null : chapter)}
-                className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap ${
-                  showTeamPills ? 'bg-[rgba(0,0,0,0.06)] text-[#2C2C2A] font-medium' : 'text-[#9B8C82] hover:bg-[rgba(0,0,0,0.03)]'
-                }`}>
-                {chapter}
-              </button>
-              {showTeamPills && teamsInChapter(chapter).map(team => {
-                const teamActive = viewMode === 'level' && levelSelection.level === 'team' && levelSelection.team === team
-                return (
-                  <button key={team}
-                    onClick={() => { setViewMode('level'); setLevelSelection({ level: 'team', brand: null, team }) }}
-                    className={`text-[10.5px] px-2.5 py-1 rounded-full transition-colors whitespace-nowrap ${
-                      teamActive ? 'bg-[#5F5E5A] text-[#DFDDD9] font-medium' : 'text-[#9B8C82] hover:bg-[rgba(0,0,0,0.03)] border border-[rgba(0,0,0,0.06)]'
-                    }`}>
-                    · {team}
-                  </button>
-                )
-              })}
-            </span>
+            <button
+              key={chapter}
+              onClick={() => setExpandedChapter(isOpen ? null : chapter)}
+              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1 ${
+                showActive
+                  ? 'bg-[#3A3A37] text-white'
+                  : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
+              }`}>
+              {label}
+              <span className={`text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>›</span>
+            </button>
           )
         })}
       </div>
+
+      {/* Chapter sub-drawer */}
+      <ChapterDrawer
+        chapter={expandedChapter}
+        activeTeam={viewMode === 'level' && levelSelection.level === 'team' ? levelSelection.team : null}
+        onPickTeam={(team) => {
+          setViewMode('level')
+          setLevelSelection({ level: 'team', brand: null, team })
+        }}
+      />
+
+      {/* Context bar — persistent "you are here" + quarter selector */}
+      <ContextBar
+        viewMode={viewMode}
+        levelSelection={levelSelection}
+        quarter={quarter}
+        onQuarterChange={setQuarter}
+        brandOwners={brandOwners}
+      />
 
       {/* Friday reminder banner — show on Friday if user has pending check-ins */}
       {!fridayBannerDismissed && isFriday() && pendingCheckInCount > 0 && (
