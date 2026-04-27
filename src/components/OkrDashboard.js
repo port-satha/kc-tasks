@@ -22,6 +22,7 @@ import {
 import KrSparkline from './KrSparkline'
 import ChapterDrawer from './ChapterDrawer'
 import ContextBar from './ContextBar'
+import KpiMilestoneCard from './KpiMilestoneCard'
 
 const CascadeTreeModal = dynamic(() => import('./CascadeTreeModal'), { ssr: false })
 const CheckInDrawer = dynamic(() => import('./CheckInDrawer'), { ssr: false })
@@ -662,7 +663,7 @@ export default function OkrDashboard() {
               ) : (
                 <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
                   {kpis.map(kpi => (
-                    <KpiCard key={kpi.id} kpi={kpi}
+                    <KpiMilestoneCard key={kpi.id} kpi={kpi}
                       onClick={canCreate ? () => { setEditingKpi(kpi); setShowKpiForm(true) } : null}
                       onDelete={canCreate ? () => handleDeleteKpi(kpi.id) : null}
                       onUpdateValue={(canCreate || kpi.owner_id === user?.id) ? () => setKpiUpdating(kpi) : null}
@@ -897,52 +898,7 @@ function Segmented({ options, value, onChange }) {
   )
 }
 
-// ---------- KPI card ----------
-function KpiCard({ kpi, onClick, onDelete, onUpdateValue, currentUserId }) {
-  const pct = calcKpiPercent(kpi)
-  const color = progressColor(pct)
-  const isOwner = kpi.owner_id && currentUserId && kpi.owner_id === currentUserId
-  const staleDays = kpi.last_updated_at ? Math.floor((Date.now() - new Date(kpi.last_updated_at).getTime()) / 86400000) : null
-  const isStale = staleDays != null && staleDays > 30
-  return (
-    <div className="bg-[#F5F3EF] border border-[rgba(0,0,0,0.04)] rounded-lg p-[10px] relative group">
-      <button
-        onClick={onClick}
-        className={`w-full text-left ${onClick ? 'cursor-pointer' : 'cursor-default'}`}>
-        <p className="text-[9.5px] uppercase tracking-[0.4px] text-[#9B8C82] truncate">{kpi.name}</p>
-        <div className="flex items-baseline gap-1.5 mt-1">
-          <span className="text-[15px] font-medium text-[#2C2C2A]">
-            {formatNumber(kpi.current_value)}{kpi.target_unit && kpi.target_unit.length <= 2 ? kpi.target_unit : ''}
-          </span>
-          <span className="text-[10px] font-medium" style={{ color }}>{pct}%</span>
-          {isStale && (
-            <span className="text-[9px] text-[#BA7517]" title={`Last updated ${staleDays} days ago`}>⚠</span>
-          )}
-        </div>
-        <div className="h-[3px] bg-[rgba(0,0,0,0.04)] rounded-full mt-1.5 overflow-hidden">
-          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
-        </div>
-        <p className="text-[9.5px] text-[#B7A99D] mt-1.5 truncate">
-          Target {formatNumber(kpi.target_value)}{kpi.target_unit ? ` ${kpi.target_unit}` : ''}
-          {kpi.owner?.nickname ? ` · ${kpi.owner.nickname}` : ''}
-        </p>
-      </button>
-      <div className="flex gap-1 mt-1.5">
-        {(isOwner || onClick) && onUpdateValue && (
-          <button onClick={(e) => { e.stopPropagation(); onUpdateValue() }}
-            className="text-[9.5px] px-2 py-0.5 bg-[#2C2C2A] text-[#DFDDD9] rounded-full hover:bg-[#3D3D3A]">
-            Update value
-          </button>
-        )}
-      </div>
-      {onDelete && (
-        <button onClick={(e) => { e.stopPropagation(); onDelete() }}
-          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-[#A32D2D] text-[10px] p-1 transition-opacity"
-          title="Delete">✕</button>
-      )}
-    </div>
-  )
-}
+// KpiCard moved to src/components/KpiMilestoneCard.js (Section 6)
 
 // ---------- Objective card ----------
 function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, checkInsByKr }) {
