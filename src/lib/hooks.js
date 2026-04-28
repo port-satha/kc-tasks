@@ -90,7 +90,9 @@ export function useTasks(projectId = null, memberId = null, userId = null) {
     load()
 
     // Realtime subscription — debounced, skip our own updates
-    const channelName = `tasks-${projectId || 'personal'}-${Date.now()}`
+    // Stable channel name per (projectId, user) pair so React Strict Mode
+    // re-runs and parent re-mounts don't pile up duplicate subscriptions.
+    const channelName = `tasks-${projectId || 'personal'}-${userId || 'anon'}`
     const handleChange = (payload) => {
       const changedId = payload?.new?.id || payload?.old?.id
       // Skip if this is an echo of our own optimistic update

@@ -235,6 +235,23 @@ export async function createTask(supabase, taskData) {
   const nullIfEmpty = ['due', 'priority', 'value', 'effort', 'progress', 'assigned_to']
   nullIfEmpty.forEach(f => { if (cleaned[f] === '') cleaned[f] = null })
 
+  // is_acknowledged: if assigned to someone OTHER than the creator, mark as
+  // unacknowledged so it surfaces in their "Recently assigned" section.
+  // Self-created or unassigned tasks default to acknowledged.
+  if (cleaned.assigned_to && cleaned.created_by) {
+    // Look up the assignee's profile_id via the members table
+    try {
+      const { data: member } = await supabase
+        .from('members')
+        .select('profile_id')
+        .eq('id', cleaned.assigned_to)
+        .single()
+      if (member?.profile_id && member.profile_id !== cleaned.created_by) {
+        cleaned.is_acknowledged = false
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   const { data, error } = await supabase
     .from('tasks')
     .insert(cleaned)
@@ -242,16 +259,55 @@ export async function createTask(supabase, taskData) {
     .single()
   if (error) throw error
 
-  // If assigned to someone in a project task, also create a personal reference
-  // The assignee will see the task in their project view
+  // Fire notification if task is created assigned to someone other than creator
+  if (data.assigned_to) {
+    _sendTaskUpdateNotifications(supabase, data, { assigned_to: data.assigned_to }, null)
+      .catch(err => console.error('Notification error (non-blocking):', err))
+  }
+
   return data
 }
 
-export async function updateTask(supabase, taskId, updates, { previousAssignedTo = null } = {}) {
+// Mark a batch of tasks as acknowledged (called when "Recently assigned"
+// section becomes visible to the user).
+export async function acknowledgeTasks(supabase, taskIds) {
+  if (!taskIds || taskIds.length === 0) return
+  const { error } = await supabase
+    .from('tasks')
+    .update({ is_acknowledged: true })
+    .in('id', taskIds)
+  if (error) console.error('Failed to acknowledge tasks:', error)
+}
+
+export async function updateTask(supabase, taskId, updates, { previousAssignedTo } = {}) {
   const { assigned_member, subtasks, children, _parentTask, _isAssignedChild, _project, ...cleanUpdates } = updates
   // Clean empty strings to null for date/enum fields
   const nullIfEmpty = ['due', 'priority', 'value', 'effort', 'progress', 'assigned_to']
   nullIfEmpty.forEach(f => { if (f in cleanUpdates && cleanUpdates[f] === '') cleanUpdates[f] = null })
+
+  // If caller didn't pass previousAssignedTo but we're updating assigned_to,
+  // fetch it from the DB so notifications fire correctly.
+  if (previousAssignedTo === undefined && 'assigned_to' in cleanUpdates) {
+    try {
+      const { data: prev } = await supabase.from('tasks').select('assigned_to').eq('id', taskId).single()
+      previousAssignedTo = prev?.assigned_to ?? null
+    } catch (e) { previousAssignedTo = null }
+  }
+
+  // If assigned_to is changing to a NEW assignee (not the current user),
+  // mark unacknowledged so it shows in their "Recently assigned" section.
+  if ('assigned_to' in cleanUpdates && cleanUpdates.assigned_to && cleanUpdates.assigned_to !== previousAssignedTo) {
+    try {
+      const [{ data: member }, { data: { user } }] = await Promise.all([
+        supabase.from('members').select('profile_id').eq('id', cleanUpdates.assigned_to).single(),
+        supabase.auth.getUser(),
+      ])
+      if (member?.profile_id && member.profile_id !== user?.id) {
+        cleanUpdates.is_acknowledged = false
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   const { data, error } = await supabase
     .from('tasks')
     .update(cleanUpdates)

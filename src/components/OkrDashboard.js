@@ -197,27 +197,31 @@ export default function OkrDashboard() {
     if (typeof window !== 'undefined') sessionStorage.setItem('kc-friday-banner-dismissed', '1')
   }
 
-  // Load latest check-ins for visible objectives' KRs (for confidence warnings)
-  useEffect(() => {
-    const allKrs = []
-    ;[...objectives, ...myObjectives, ...(reportsData?.objectives || [])].forEach(o => {
-      (o.key_results || []).forEach(kr => allKrs.push(kr.id))
-    })
-    const uniqueIds = [...new Set(allKrs)]
-    if (uniqueIds.length === 0) { setLatestCheckIns({}); return }
-    fetchLatestCheckIns(supabase, uniqueIds).then(setLatestCheckIns).catch(() => {})
-  }, [supabase, objectives, myObjectives, reportsData])
+  // Collect unique visible KR IDs once, then derive a stable string key so
+  // the two effects below don't refire when array references change but content doesn't.
+  const visibleKrIds = useMemo(() => {
+    const set = new Set()
+    const collect = (list) => list?.forEach(o => (o.key_results || []).forEach(kr => set.add(kr.id)))
+    collect(objectives); collect(myObjectives); collect(reportsData?.objectives)
+    return [...set]
+  }, [objectives, myObjectives, reportsData])
+  const visibleKrIdsKey = visibleKrIds.join(',')
 
-  // Load last 8 weeks of check-ins for each visible KR (for sparklines)
+  // Single combined fetch for latest check-ins + 8-week batch (parallel).
   useEffect(() => {
-    const allKrs = []
-    ;[...objectives, ...myObjectives, ...(reportsData?.objectives || [])].forEach(o => {
-      (o.key_results || []).forEach(kr => allKrs.push(kr.id))
-    })
-    const uniqueIds = [...new Set(allKrs)]
-    if (uniqueIds.length === 0) { setCheckInsByKr({}); return }
-    fetchCheckInsBatch(supabase, uniqueIds, 8).then(setCheckInsByKr).catch(() => {})
-  }, [supabase, objectives, myObjectives, reportsData])
+    if (!visibleKrIdsKey) { setLatestCheckIns({}); setCheckInsByKr({}); return }
+    const ids = visibleKrIdsKey.split(',')
+    let active = true
+    Promise.all([
+      fetchLatestCheckIns(supabase, ids),
+      fetchCheckInsBatch(supabase, ids, 8),
+    ]).then(([latest, batch]) => {
+      if (!active) return
+      setLatestCheckIns(latest); setCheckInsByKr(batch)
+    }).catch(() => {})
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, visibleKrIdsKey])
 
   // Section 5 — load the full objectives list for the year so we can show
   // depth indicators ("N team OKRs cascade here · N individual OKRs") on
@@ -256,17 +260,28 @@ export default function OkrDashboard() {
     return counts
   }, [allObjectivesForYear])
 
+  // Visible objective IDs — memo + stable string key so effect doesn't refire
+  // when references change but content doesn't.
+  const visibleObjectiveIds = useMemo(() => {
+    const set = new Set()
+    objectives.forEach(o => set.add(o.id))
+    myObjectives.forEach(o => set.add(o.id))
+    ;(reportsData?.objectives || []).forEach(o => set.add(o.id))
+    return [...set]
+  }, [objectives, myObjectives, reportsData])
+  const visibleObjectiveIdsKey = visibleObjectiveIds.join(',')
+
   // Load reflections for visible objectives
   useEffect(() => {
-    const ids = [...new Set([
-      ...objectives.map(o => o.id),
-      ...myObjectives.map(o => o.id),
-      ...(reportsData?.objectives || []).map(o => o.id),
-    ])]
-    if (ids.length === 0) { setReflectionsByObjective({}); return }
+    if (!visibleObjectiveIdsKey) { setReflectionsByObjective({}); return }
+    const ids = visibleObjectiveIdsKey.split(',')
     const q = quarter === 'annual' ? null : quarter
-    fetchReflectionsForObjectives(supabase, ids, { year, quarter: q }).then(setReflectionsByObjective).catch(() => {})
-  }, [supabase, objectives, myObjectives, reportsData, year, quarter])
+    let active = true
+    fetchReflectionsForObjectives(supabase, ids, { year, quarter: q })
+      .then(r => { if (active) setReflectionsByObjective(r) }).catch(() => {})
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, visibleObjectiveIdsKey, year, quarter])
 
   const openCheckInDrawer = async () => {
     if (!user?.id) return
@@ -644,7 +659,14 @@ export default function OkrDashboard() {
       {viewMode !== 'team-manage' && (
         <MainTabs
           active={mainTab}
-          brand={profile?.squad || levelSelection?.brand || 'KC'}
+          // Tab label tracks the active brand pill when in level mode, so
+          // clicking onest / grubby / KC updates "Brand: …" live. Falls
+          // back to the user's own squad on My OKRs / Company tabs.
+          brand={
+            viewMode === 'level' && levelSelection?.brand
+              ? levelSelection.brand
+              : (profile?.squad || 'KC')
+          }
           isManager={reportsCount > 0}
           onSwitchToManage={() => setViewMode('team-manage')}
           onChange={(t) => {
@@ -869,7 +891,9 @@ export default function OkrDashboard() {
                     onViewTree={() => setTreeObjectiveId(obj.id)}
                     checkInsByKr={checkInsByKr}
                     cascadeCounts={cascadeCountsByObjective[obj.id]}
-                    canEdit={canCreate} />
+                    canEdit={canCreate}
+                    currentUserId={user?.id}
+                    onCheckInKr={openCheckInForSingle} />
                 ))}
               </div>
             )}
@@ -1113,7 +1137,7 @@ function Segmented({ options, value, onChange }) {
 // KpiCard moved to src/components/KpiMilestoneCard.js (Section 6)
 
 // ---------- Objective card ----------
-function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, checkInsByKr, cascadeCounts, canEdit }) {
+function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, checkInsByKr, cascadeCounts, canEdit, currentUserId, onCheckInKr }) {
   const pct = calcObjectivePercent(obj)
   const color = progressColor(pct)
   const brand = obj.brand || 'KC'
@@ -1200,8 +1224,14 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
             const krPct = calcKrPercent(kr)
             const krColor = progressColor(krPct)
             const krHistory = checkInsByKr?.[kr.id]
+            // KR owner can check in inline. Brand objective owner can also
+            // check in any of their KRs (acts as backstop when the KR
+            // owner is unavailable).
+            const canCheckIn = onCheckInKr && currentUserId && (
+              kr.owner_id === currentUserId || obj.owner_id === currentUserId
+            )
             return (
-              <div key={kr.id} className="bg-[rgba(255,255,255,0.5)] rounded-md px-2.5 py-2 flex items-start gap-2.5">
+              <div key={kr.id} className="bg-[rgba(255,255,255,0.5)] rounded-md px-2.5 py-2 flex items-start gap-2.5 group/kr">
                 <span className="text-[10px] text-[#9B8C82] font-medium w-8 flex-shrink-0">KR{idx+1}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-[11.5px] text-[#2C2C2A] leading-tight">{kr.title}</p>
@@ -1217,6 +1247,15 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
                     <div className="h-full" style={{ width: `${krPct}%`, background: krColor }} />
                   </div>
                   <span className="text-[10.5px] font-medium" style={{ color: krColor }}>{krPct}%</span>
+                  {canCheckIn && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onCheckInKr(kr, obj) }}
+                      title="Update value / weekly check-in"
+                      className="text-[10px] px-2 py-0.5 bg-[#2C2C2A] text-[#DFDDD9] rounded-full sm:opacity-0 sm:group-hover/kr:opacity-100 transition-opacity"
+                    >
+                      Update
+                    </button>
+                  )}
                 </div>
               </div>
             )

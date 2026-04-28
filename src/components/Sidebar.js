@@ -62,12 +62,11 @@ const NAV_ITEMS = [
   { href: '/members', label: 'Team', Icon: IconTeam },
 ]
 
-// Admin-only nav — only shown to users with role='admin'
+// Admin-only nav — single entry that opens the Settings hub at /settings.
+// The hub lists all admin sub-pages with descriptions + badges. Cleaner than
+// flattening 4 entries inline here, especially as we add more.
 const ADMIN_NAV_ITEMS = [
-  { href: '/settings/roles', label: 'Roles', Icon: IconSettings },
-  { href: '/settings/org', label: 'Org chart', Icon: IconSettings },
-  { href: '/settings/edit-requests', label: 'Edit requests', Icon: IconSettings },
-  { href: '/okrs/snapshots', label: 'Snapshots', Icon: IconSettings },
+  { href: '/settings', label: 'Settings', Icon: IconSettings },
 ]
 
 export default function Sidebar({ user, profile, projects }) {
@@ -93,6 +92,42 @@ export default function Sidebar({ user, profile, projects }) {
       .then(({ count }) => { if (active) setIncompleteCount(count || 0) })
     return () => { active = false }
   }, [supabase, isAdmin])
+
+  // My Tasks badge — count of tasks assigned to me by others that I haven't seen yet.
+  // Live via realtime (no per-route refetch).
+  const [myTasksBadge, setMyTasksBadge] = useState(0)
+  const [myMemberId, setMyMemberId] = useState(null)
+  useEffect(() => {
+    if (!user?.id) { setMyTasksBadge(0); setMyMemberId(null); return }
+    let active = true
+    supabase.from('members').select('id').eq('profile_id', user.id).single()
+      .then(({ data }) => { if (active && data?.id) setMyMemberId(data.id) })
+    return () => { active = false }
+  }, [supabase, user?.id])
+
+  useEffect(() => {
+    if (!myMemberId) return
+    let active = true
+    const refresh = async () => {
+      try {
+        const { count } = await supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('assigned_to', myMemberId)
+          .eq('is_acknowledged', false)
+        if (active) setMyTasksBadge(count || 0)
+      } catch (e) { /* column may not exist yet */ }
+    }
+    refresh()
+    // Subscribe so the badge updates when tasks are assigned/acknowledged in realtime.
+    let timer = null
+    const channel = supabase
+      .channel(`badge-${myMemberId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `assigned_to=eq.${myMemberId}` },
+        () => { clearTimeout(timer); timer = setTimeout(refresh, 250) })
+      .subscribe()
+    return () => { active = false; clearTimeout(timer); supabase.removeChannel(channel) }
+  }, [supabase, myMemberId])
 
   useEffect(() => {
     const saved = localStorage.getItem('kc-dark-mode')
@@ -146,6 +181,8 @@ export default function Sidebar({ user, profile, projects }) {
         <div className="flex flex-col gap-[2px]">
           {NAV_ITEMS.map(({ href, label, Icon }) => {
             const active = isActive(href)
+            // My Tasks gets a badge for unacknowledged assignments
+            const badge = href === '/' && myTasksBadge > 0 ? myTasksBadge : null
             return (
               <button
                 key={href}
@@ -157,7 +194,13 @@ export default function Sidebar({ user, profile, projects }) {
                 }`}
               >
                 <Icon />
-                <span>{label}</span>
+                <span className="flex-1 text-left">{label}</span>
+                {badge && (
+                  <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{ background: 'rgba(55,138,221,0.20)', color: '#7DB6F0' }}>
+                    {badge}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -169,11 +212,7 @@ export default function Sidebar({ user, profile, projects }) {
               Admin
             </p>
             <div className="flex flex-col gap-[2px]">
-              {ADMIN_NAV_ITEMS.filter(item => {
-                // People role only sees Snapshots (and edit-requests for review)
-                if (profile?.role === 'people') return ['/okrs/snapshots', '/settings/edit-requests'].includes(item.href)
-                return true
-              }).map(({ href, label, Icon }) => {
+              {ADMIN_NAV_ITEMS.map(({ href, label, Icon }) => {
                 const active = isActive(href)
                 return (
                   <button
@@ -238,14 +277,17 @@ export default function Sidebar({ user, profile, projects }) {
         </div>
       </div>
 
-      {/* Admin chip — N incomplete profiles. Visible only to admins. */}
+      {/* Admin chip — N incomplete profiles. Visible only to admins. Goes to Org chart so admin can see who. */}
       {isAdmin && incompleteCount > 0 && (
         <button
-          onClick={() => navigate('/members')}
-          className="mx-3 mb-2 flex items-center gap-2 rounded-md px-2 py-1.5 bg-[#FAEEDA]/15 hover:bg-[#FAEEDA]/25 text-[10.5px] text-[#EFCC80] transition-colors text-left"
+          onClick={() => navigate('/settings/org')}
+          className="mx-3 mb-2 flex items-center gap-2 rounded-md px-2 py-1.5 bg-[rgba(186,117,23,0.18)] hover:bg-[rgba(186,117,23,0.28)] text-[10.5px] text-[#EFCC80] transition-colors text-left"
           title="View incomplete profiles"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-[#EF9F27] flex-shrink-0" />
+          <svg width="11" height="11" viewBox="0 0 14 14" fill="none" className="flex-shrink-0">
+            <path d="M7 1L13 12H1L7 1z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+            <path d="M7 5v3M7 10v.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
           <span className="truncate flex-1">{incompleteCount} incomplete profile{incompleteCount !== 1 ? 's' : ''}</span>
           <span className="opacity-70">›</span>
         </button>

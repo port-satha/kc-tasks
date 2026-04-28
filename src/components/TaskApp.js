@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback, useRef, useEffect, memo } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react'
 import { DEFAULT_SECTIONS, PRIORITIES, VALUES, EFFORT_LEVELS, TASK_PROGRESS, PRIORITY_COLORS, VALUE_COLORS, EFFORT_COLORS, PROGRESS_COLORS, PROGRESS_DOT } from '../lib/data'
 import { useSupabase, useUser, useTasks, useMembers, useSections } from '../lib/hooks'
 import { createTask, updateTask, deleteTask, updateSubtask, createChildTask, createSection, deleteSection, renameSection, createRecurringFollowUp, fetchTaskById, fetchProjectMembers } from '../lib/db'
@@ -38,14 +38,16 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const [filterPriority, setFilterPriority] = useState(initialPrefs.filterPriority || 'all')
   const [filterAssignee, setFilterAssignee] = useState(initialPrefs.filterAssignee || 'all')
   const [filterStatus, setFilterStatus] = useState(initialPrefs.filterStatus || 'active')
+  // My Tasks source filter — 'all' | 'mine' (created by me) | 'assigned' (assigned to me by others)
+  const [filterSource, setFilterSource] = useState(initialPrefs.filterSource || 'all')
   const [searchQuery, setSearchQuery] = useState('')
 
   // Persist key prefs on change
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const prefs = { view, collapsedSections, filterPriority, filterAssignee, filterStatus }
+    const prefs = { view, collapsedSections, filterPriority, filterAssignee, filterStatus, filterSource }
     try { window.localStorage.setItem(prefsKey, JSON.stringify(prefs)) } catch {}
-  }, [view, collapsedSections, filterPriority, filterAssignee, filterStatus, prefsKey])
+  }, [view, collapsedSections, filterPriority, filterAssignee, filterStatus, filterSource, prefsKey])
   const [showAddSection, setShowAddSection] = useState(false)
   const [newSectionName, setNewSectionName] = useState('')
   const [undoToast, setUndoToast] = useState(null)
@@ -132,12 +134,17 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const smGridCols = `1fr ${extraCols.map(c => c.width).join(' ')}`
   const mobileGridCols = isColVisible('due') ? '1fr 80px' : '1fr'
 
-  const baseSections = [...new Set([...DEFAULT_SECTIONS, ...customSections])]
-  tasks.forEach(t => { if (t.section && !baseSections.includes(t.section)) baseSections.push(t.section) })
-
-  const allSections = sectionOrder
-    ? [...sectionOrder.filter(s => baseSections.includes(s)), ...baseSections.filter(s => !sectionOrder.includes(s))]
-    : baseSections
+  // Memoize allSections — referenced by the heavy filter/group pipeline below.
+  const allSections = useMemo(() => {
+    const base = [...new Set([...DEFAULT_SECTIONS, ...customSections])]
+    for (const t of tasks) {
+      if (t.section && !base.includes(t.section)) base.push(t.section)
+    }
+    if (!sectionOrder) return base
+    const ordered = sectionOrder.filter(s => base.includes(s))
+    for (const s of base) if (!sectionOrder.includes(s)) ordered.push(s)
+    return ordered
+  }, [tasks, customSections, sectionOrder])
 
   const storageKey = `sectionOrder-${projectId || 'personal'}`
   useEffect(() => {
@@ -510,42 +517,123 @@ export default function TaskApp({ projectId = null, projectName = null, settings
     )).catch(err => console.error('Reorder DB update failed:', err))
   }, [tasks, applyBulkOptimistic, supabase, selectedTaskIds])
 
-  const topLevelTasks = tasks.filter(t => !t.parent_task_id || t._isAssignedChild)
-  const activeTasks = topLevelTasks.filter(t => t.progress !== 'Done')
-  const doneTasks = topLevelTasks.filter(t => t.progress === 'Done')
+  // Memoize the top-level/active/done split — only re-compute when tasks change.
+  const { topLevelTasks, activeTasks, doneTasks } = useMemo(() => {
+    const top = tasks.filter(t => !t.parent_task_id || t._isAssignedChild)
+    const active = []
+    const done = []
+    for (const t of top) {
+      if (t.progress === 'Done') done.push(t); else active.push(t)
+    }
+    return { topLevelTasks: top, activeTasks: active, doneTasks: done }
+  }, [tasks])
 
-  const filtered = (filterStatus === 'done' ? doneTasks : filterStatus === 'active' ? activeTasks : topLevelTasks).filter(t => {
-    if (filterPriority !== 'all' && t.priority !== filterPriority) return false
-    if (filterAssignee !== 'all' && t.assigned_to !== filterAssignee) return false
-    if (searchQuery && !t.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
-    return true
-  })
+  // Compute "assigned to me by others" count (for the badge on Source pill)
+  // Stable "today" timestamp for the render pass — avoid `new Date()` in
+  // every loop iteration / sort comparator below.
+  const todayMs = useMemo(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime()
+  }, [])
+  const isOverdue = useCallback(
+    (t) => !!(t.due && t.progress !== 'Done' && new Date(t.due).getTime() < todayMs),
+    [todayMs]
+  )
 
-  const filteredActive = filtered.filter(t => t.progress !== 'Done')
-  const filteredDone = filtered.filter(t => t.progress === 'Done')
+  const assignedToMeCount = useMemo(() => {
+    if (projectId) return 0
+    const myMemberId = currentMember?.id
+    const myUserId = user?.id
+    if (!myMemberId || !myUserId) return 0
+    let n = 0
+    for (const t of topLevelTasks) {
+      if (t.assigned_to === myMemberId
+          && t.created_by && t.created_by !== myUserId
+          && t.is_acknowledged === false) n++
+    }
+    return n
+  }, [topLevelTasks, projectId, currentMember?.id, user?.id])
 
-  const grouped = {}
-  allSections.forEach(s => { grouped[s] = [] })
-  filteredActive.forEach(t => {
-    const sec = t.section || 'Recently assigned'
-    if (!grouped[sec]) grouped[sec] = []
-    grouped[sec].push(t)
-  })
-  // Sort each section by sort_order for consistent ordering
-  Object.keys(grouped).forEach(sec => {
-    grouped[sec].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
-  })
+  // Heavy filter+group+virtual-section pipeline. Re-runs only when one of
+  // the actual inputs changes — not on every state change in the component.
+  const {
+    filtered, overdueTasks, recentlyAssignedTasks,
+    filteredActive, filteredDone, grouped, boardColumns,
+  } = useMemo(() => {
+    const myMemberId = currentMember?.id
+    const myUserId = user?.id
+    const search = searchQuery ? searchQuery.toLowerCase() : ''
+    const sourceBase =
+      filterStatus === 'done' ? doneTasks :
+      filterStatus === 'active' ? activeTasks : topLevelTasks
 
-  const boardColumns = {}
-  TASK_PROGRESS.forEach(p => { boardColumns[p] = [] })
-  filtered.forEach(t => {
-    const prog = t.progress || 'Not Started'
-    if (!boardColumns[prog]) boardColumns[prog] = []
-    boardColumns[prog].push(t)
-  })
+    const filtered = []
+    for (const t of sourceBase) {
+      if (filterPriority !== 'all' && t.priority !== filterPriority) continue
+      if (filterAssignee !== 'all' && t.assigned_to !== filterAssignee) continue
+      if (search && !t.title.toLowerCase().includes(search)) continue
+      if (!projectId && filterSource !== 'all') {
+        const isAssignedToMe = t.assigned_to === myMemberId && t.created_by && t.created_by !== myUserId
+        const isCreatedByMe = t.created_by === myUserId
+        if (filterSource === 'mine' && !isCreatedByMe) continue
+        if (filterSource === 'assigned' && !isAssignedToMe) continue
+      }
+      filtered.push(t)
+    }
 
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const isOverdue = (t) => t.due && t.progress !== 'Done' && new Date(t.due) < today
+    // Virtual sections (My Tasks only)
+    const overdueTasks = []
+    const recentlyAssignedTasks = []
+    if (!projectId) {
+      for (const t of filtered) {
+        if (t.progress === 'Done') continue
+        if (t.due && new Date(t.due).getTime() < todayMs) {
+          overdueTasks.push(t); continue
+        }
+        if (t.assigned_to === myMemberId) {
+          if (t._isLegacySubtask) { recentlyAssignedTasks.push(t); continue }
+          if (t.created_by && t.created_by !== myUserId && t.is_acknowledged === false) {
+            recentlyAssignedTasks.push(t)
+          }
+        }
+      }
+    }
+    const virtualTaskIds = new Set()
+    for (const t of overdueTasks) virtualTaskIds.add(t.id)
+    for (const t of recentlyAssignedTasks) virtualTaskIds.add(t.id)
+
+    const filteredActive = []
+    const filteredDone = []
+    for (const t of filtered) {
+      if (t.progress === 'Done') filteredDone.push(t); else filteredActive.push(t)
+    }
+
+    // Group active tasks by section (skipping virtual-section tasks)
+    const grouped = {}
+    for (const s of allSections) grouped[s] = []
+    for (const t of filteredActive) {
+      if (!projectId && virtualTaskIds.has(t.id)) continue
+      const sec = t.section || 'Recently assigned'
+      if (!grouped[sec]) grouped[sec] = []
+      grouped[sec].push(t)
+    }
+    for (const sec in grouped) {
+      grouped[sec].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+    }
+
+    const boardColumns = {}
+    for (const p of TASK_PROGRESS) boardColumns[p] = []
+    for (const t of filtered) {
+      const prog = t.progress || 'Not Started'
+      if (!boardColumns[prog]) boardColumns[prog] = []
+      boardColumns[prog].push(t)
+    }
+
+    return { filtered, overdueTasks, recentlyAssignedTasks, filteredActive, filteredDone, grouped, boardColumns }
+  }, [
+    topLevelTasks, activeTasks, doneTasks,
+    filterStatus, filterPriority, filterAssignee, filterSource, searchQuery,
+    projectId, currentMember?.id, user?.id, allSections, todayMs,
+  ])
 
   if (loading) return (
     <div className="min-h-screen bg-[#DFDDD9] flex flex-col">
@@ -577,7 +665,17 @@ export default function TaskApp({ projectId = null, projectName = null, settings
         <span className="text-[13px] font-semibold text-[#2C2C2A] truncate">{projectName || 'My tasks'}</span>
         {settingsButton}
         <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-          <span className="text-[11px] text-[#B7A99D] hidden sm:inline">{filtered.length} tasks</span>
+          <span className="text-[11px] text-[#B7A99D] hidden sm:inline">
+            {!projectId ? (
+              <>
+                {filteredActive.length} active
+                {overdueTasks.length > 0 && <> · <span className="text-[#A32D2D] font-medium">{overdueTasks.length} overdue</span></>}
+                {recentlyAssignedTasks.length > 0 && <> · <span className="text-[#185FA5] font-medium">{recentlyAssignedTasks.length} newly assigned</span></>}
+              </>
+            ) : (
+              <>{filtered.length} tasks</>
+            )}
+          </span>
           {canEdit && (
             <button onClick={() => setShowAdd(true)}
               className="text-[11px] px-3 py-1.5 bg-[#2C2C2A] text-[#DFDDD9] rounded-lg hover:bg-[#3D3D3A] transition-colors flex items-center gap-1 font-medium">
@@ -590,8 +688,8 @@ export default function TaskApp({ projectId = null, projectName = null, settings
         </div>
       </div>
 
-      {/* Toolbar — single row: view toggle · filter dropdown · search */}
-      <div className="bg-[#D1CBC5] border-b border-[rgba(0,0,0,0.04)] px-4 py-2 flex items-center gap-2 sm:gap-3">
+      {/* Toolbar — single row: view toggle · source filter (My Tasks) · filter dropdown · search */}
+      <div className="bg-[#D1CBC5] border-b border-[rgba(0,0,0,0.04)] px-4 py-2 flex items-center gap-2 sm:gap-3 flex-wrap">
         <div className="flex border border-[rgba(0,0,0,0.06)] rounded-lg overflow-hidden flex-shrink-0">
           {['list', 'board'].map(v => (
             <button key={v} onClick={() => setView(v)}
@@ -600,6 +698,32 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             </button>
           ))}
         </div>
+
+        {/* Source pills — only on My Tasks (no projectId), filters tasks by their origin */}
+        {!projectId && (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <span className="text-[10px] text-[#9B8C82] uppercase tracking-wider hidden sm:inline mr-1">Source:</span>
+            <button onClick={() => setFilterSource('all')}
+              className={`text-[11px] px-2.5 py-1 rounded-full transition-colors ${filterSource === 'all' ? 'bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.07)]'}`}>
+              All
+            </button>
+            <button onClick={() => setFilterSource('mine')}
+              className={`text-[11px] px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${filterSource === 'mine' ? 'bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.07)]'}`}>
+              <span className="text-[#9B8C82]">+</span> Created by me
+            </button>
+            <button onClick={() => setFilterSource('assigned')}
+              className={`text-[11px] px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${filterSource === 'assigned' ? 'bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.07)]'}`}>
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M2 6h7m0 0L6 3m3 3L6 9" stroke="#185FA5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Assigned to me
+              {assignedToMeCount > 0 && (
+                <span className="text-[9.5px] px-1.5 rounded-full font-semibold ml-0.5"
+                  style={{ background: filterSource === 'assigned' ? 'rgba(255,255,255,0.15)' : 'rgba(55,138,221,0.15)', color: filterSource === 'assigned' ? '#DFDDD9' : '#185FA5' }}>
+                  {assignedToMeCount}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Filter dropdown */}
         <div className="relative flex-shrink-0" ref={filterMenuRef}>
@@ -703,6 +827,58 @@ export default function TaskApp({ projectId = null, projectName = null, settings
 
       {view === 'list' ? (
         <>
+          {/* Shared column header — covers virtual + regular sections */}
+          <div className="px-4 pt-4">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-[rgba(0,0,0,0.04)] mb-1 bg-[#DFDDD9]">
+              <span className="text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] flex-1">Name</span>
+              {isColVisible('due') && <span className="text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[80px] sm:w-[100px] flex-shrink-0">Due date</span>}
+              {isColVisible('priority') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[80px] flex-shrink-0">Priority</span>}
+              {isColVisible('value') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[80px] flex-shrink-0">Value</span>}
+              {isColVisible('effort') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[100px] flex-shrink-0">Effort level</span>}
+              {isColVisible('progress') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[100px] flex-shrink-0">Task Progress</span>}
+              {isColVisible('assignee') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[80px] flex-shrink-0">Assignee</span>}
+              <div className="relative flex-shrink-0" ref={columnMenuRef}>
+                <button onClick={() => setShowColumnMenu(!showColumnMenu)}
+                  className="text-[#B7A99D] hover:text-[#9B8C82] text-[11px] px-1.5 py-1 rounded hover:bg-[rgba(0,0,0,0.04)] transition-colors" title="Customize columns">
+                  <span className="text-[13px]">⚙</span>
+                </button>
+                {showColumnMenu && (
+                  <div className="absolute right-0 top-full mt-1 w-44 bg-[#F5F3EF] border border-[rgba(0,0,0,0.04)] rounded-lg shadow-lg z-50 py-1">
+                    <p className="text-[10px] text-[#B7A99D] px-3 py-1 uppercase tracking-[1px]">Show columns</p>
+                    {ALL_COLUMNS.map(col => (
+                      <label key={col.key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-[rgba(0,0,0,0.03)] cursor-pointer text-[11px] text-[#2C2C2A]">
+                        <input type="checkbox" checked={isColVisible(col.key)} onChange={() => toggleColumn(col.key)}
+                          className="rounded border-[rgba(0,0,0,0.15)] text-[#2C2C2A] focus:ring-[#2C2C2A]" />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Virtual sections (My Tasks only) — Overdue + Recently assigned at top */}
+          {!projectId && (overdueTasks.length > 0 || recentlyAssignedTasks.length > 0) && (
+            <VirtualSections
+              overdueTasks={overdueTasks}
+              recentlyAssignedTasks={recentlyAssignedTasks}
+              members={members}
+              currentMember={currentMember}
+              isOverdue={isOverdue}
+              onOpen={setActiveTask}
+              onToggleDone={handleToggleTaskDone}
+              onAcknowledge={async (ids) => {
+                if (!ids?.length) return
+                applyBulkOptimistic(Object.fromEntries(ids.map(id => [id, { is_acknowledged: true }])))
+                try {
+                  const { acknowledgeTasks } = await import('../lib/db')
+                  await acknowledgeTasks(supabase, ids)
+                } catch (err) { console.error('Failed to acknowledge:', err) }
+              }}
+            />
+          )}
+
           <ListView grouped={grouped} collapsedSections={collapsedSections} toggleSection={toggleSection}
             expandedTasks={expandedTasks} toggleTaskExpand={toggleTaskExpand} toggleSubtask={handleToggleSubtask}
             toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue}
@@ -980,34 +1156,7 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
   const { ALL_COLUMNS, isColVisible, visibleColumns, toggleColumn, showColumnMenu, setShowColumnMenu, columnMenuRef, smGridCols, mobileGridCols } = columnConfig
 
   return (
-    <div className="p-4 flex-1">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-[rgba(0,0,0,0.04)] mb-1 bg-[#DFDDD9]">
-        <span className="text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] flex-1">Name</span>
-        {isColVisible('due') && <span className="text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[80px] sm:w-[100px] flex-shrink-0">Due date</span>}
-        {isColVisible('priority') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[80px] flex-shrink-0">Priority</span>}
-        {isColVisible('value') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[80px] flex-shrink-0">Value</span>}
-        {isColVisible('effort') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[100px] flex-shrink-0">Effort level</span>}
-        {isColVisible('progress') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[100px] flex-shrink-0">Task Progress</span>}
-        {isColVisible('assignee') && <span className="hidden sm:block text-[10px] font-medium text-[#B7A99D] uppercase tracking-[1px] w-[80px] flex-shrink-0">Assignee</span>}
-        <div className="relative flex-shrink-0" ref={columnMenuRef}>
-          <button onClick={() => setShowColumnMenu(!showColumnMenu)}
-            className="text-[#B7A99D] hover:text-[#9B8C82] text-[11px] px-1.5 py-1 rounded hover:bg-[rgba(0,0,0,0.04)] transition-colors" title="Customize columns">
-            <span className="text-[13px]">⚙</span>
-          </button>
-          {showColumnMenu && (
-            <div className="absolute right-0 top-full mt-1 w-44 bg-[#F5F3EF] border border-[rgba(0,0,0,0.04)] rounded-lg shadow-lg z-50 py-1">
-              <p className="text-[10px] text-[#B7A99D] px-3 py-1 uppercase tracking-[1px]">Show columns</p>
-              {ALL_COLUMNS.map(col => (
-                <label key={col.key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-[rgba(0,0,0,0.03)] cursor-pointer text-[11px] text-[#2C2C2A]">
-                  <input type="checkbox" checked={isColVisible(col.key)} onChange={() => toggleColumn(col.key)}
-                    className="rounded border-[rgba(0,0,0,0.15)] text-[#2C2C2A] focus:ring-[#2C2C2A]" />
-                  {col.label}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+    <div className="px-4 pb-4 flex-1">
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -1454,6 +1603,136 @@ function BoardCard({ task, onOpen, isOverdue }) {
         {subtaskCount > 0 && <span className="text-[10px] text-[#B7A99D]">{subtaskDone}/{subtaskCount}</span>}
         {task.assigned_member && <AvatarChip name={getCompactName(task.assigned_member)} size="sm" avatarColor={task.assigned_member.avatar_color} avatarUrl={task.assigned_member.avatar_url} />}
         {task.due && <span className={`text-[10px] ml-auto ${overdue ? 'text-[#A32D2D] font-medium' : 'text-[#B7A99D]'}`}>{formatSmartDate(task.due)}</span>}
+      </div>
+    </div>
+  )
+}
+
+// =====================================================
+// Virtual sections for My Tasks: Overdue + Recently assigned
+// Flat layout matching the rest of the task list — shared columns,
+// inline section header, no card wrapper.
+// =====================================================
+function VirtualSections({ overdueTasks, recentlyAssignedTasks, members, currentMember, isOverdue, onOpen, onToggleDone, onAcknowledge }) {
+  // Auto-acknowledge "Recently assigned" tasks 2s after they appear (debounced)
+  useEffect(() => {
+    if (!recentlyAssignedTasks?.length) return
+    const ids = recentlyAssignedTasks.map(t => t.id)
+    const timer = setTimeout(() => onAcknowledge?.(ids), 2000)
+    return () => clearTimeout(timer)
+  }, [recentlyAssignedTasks?.map(t => t.id).join(','), onAcknowledge])
+
+  return (
+    <div className="px-4 pt-3">
+      {overdueTasks.length > 0 && (
+        <VirtualSection
+          title="Overdue"
+          count={overdueTasks.length}
+          accent="#A32D2D"
+          countBg="rgba(226,75,74,0.10)"
+          tasks={overdueTasks}
+          members={members}
+          isOverdue={isOverdue}
+          onOpen={onOpen}
+          onToggleDone={onToggleDone}
+        />
+      )}
+      {recentlyAssignedTasks.length > 0 && (
+        <VirtualSection
+          title="Recently assigned"
+          caption="Others put these on your plate"
+          count={recentlyAssignedTasks.length}
+          accent="#185FA5"
+          countBg="rgba(55,138,221,0.10)"
+          tasks={recentlyAssignedTasks}
+          members={members}
+          isOverdue={isOverdue}
+          onOpen={onOpen}
+          onToggleDone={onToggleDone}
+          showAssignedBy
+        />
+      )}
+    </div>
+  )
+}
+
+function VirtualSection({ title, caption, count, accent, countBg, tasks, members, isOverdue, onOpen, onToggleDone, showAssignedBy }) {
+  const [collapsed, setCollapsed] = useState(false)
+  return (
+    <div className="mb-1">
+      {/* Section header — flat, inline */}
+      <button onClick={() => setCollapsed(c => !c)}
+        className="w-full flex items-center gap-2 px-1 py-2 hover:bg-[rgba(0,0,0,0.02)] rounded transition-colors">
+        <span className={`text-[10px] transition-transform ${collapsed ? '' : 'rotate-90'}`} style={{ color: '#6B665C' }}>▶</span>
+        <span className="text-[11px] uppercase tracking-[0.5px] font-semibold" style={{ color: accent }}>{title}</span>
+        <span className="text-[9px] rounded-full px-2 py-0.5 font-medium" style={{ background: countBg, color: accent }}>{count}</span>
+        {caption && (
+          <span className="text-[9.5px] text-[#9B8C82] font-normal normal-case ml-1.5">{caption}</span>
+        )}
+      </button>
+      {/* Task rows — match the column layout of ListView */}
+      {!collapsed && (
+        <div>
+          {tasks.map(t => (
+            <VirtualTaskRow key={t.id} task={t} members={members} isOverdue={isOverdue}
+              onOpen={onOpen} onToggleDone={onToggleDone} showAssignedBy={showAssignedBy} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VirtualTaskRow({ task, members, isOverdue, onOpen, onToggleDone, showAssignedBy }) {
+  const overdue = isOverdue?.(task)
+  const assignedBy = showAssignedBy && task.created_by
+    ? members?.find(m => m.profile_id === task.created_by)
+    : null
+  const assignee = task.assigned_to ? members?.find(m => m.id === task.assigned_to) : null
+  return (
+    <div onClick={() => onOpen?.(task)}
+      className="flex items-start gap-2 px-1 py-2 border-b border-[rgba(0,0,0,0.04)] hover:bg-[rgba(44,44,42,0.02)] cursor-pointer transition-colors">
+      {/* Checkbox */}
+      <button onClick={(e) => { e.stopPropagation(); onToggleDone?.(task) }}
+        className={`w-3.5 h-3.5 rounded border-[1.5px] flex-shrink-0 mt-0.5 transition-colors ${overdue ? 'border-[#A32D2D]' : 'border-[#9B8C82] hover:border-[#1D9E75]'}`}>
+      </button>
+      {/* Task content (title + meta line) — flex-1 */}
+      <div className="flex-1 min-w-0">
+        {/* Subtask parent breadcrumb */}
+        {task._parentTask && (
+          <p className="text-[9.5px] text-[#B7A99D] truncate leading-tight">{task._parentTask.title} ›</p>
+        )}
+        {/* Assigned-by inline badge for "Recently assigned" section */}
+        {showAssignedBy && assignedBy && (
+          <span className="text-[9px] inline-block mr-1.5 mb-0.5 px-1.5 py-0.5 rounded-full"
+            style={{ background: 'rgba(55,138,221,0.08)', color: '#185FA5' }}>
+            → Assigned by {assignedBy.nickname || assignedBy.name} {assignedBy.position_title || assignedBy.position || ''}
+          </span>
+        )}
+        <p className="text-[12.5px] text-[#2C2C2A] truncate leading-tight">{task.title}</p>
+        {/* Meta line: brand chip + project name */}
+        {(task._project || task.brand) && (
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {task._project && <BrandChip projectName={task._project.name} />}
+            {task._project && <span className="text-[10px] text-[#9B8C82] truncate">{task._project.name}</span>}
+          </div>
+        )}
+      </div>
+      {/* Due column */}
+      <div className={`text-[11px] text-right flex-shrink-0 hidden sm:block ${overdue ? 'text-[#A32D2D] font-medium' : 'text-[#9B8C82]'}`} style={{ width: 80 }}>
+        {task.due ? formatSmartDate(task.due) : ''}
+      </div>
+      {/* Priority column */}
+      <div className="hidden sm:flex items-center justify-end flex-shrink-0" style={{ width: 70 }}>
+        {task.priority && (
+          <span className={`text-[9px] px-2 py-0.5 rounded-full ${PRIORITY_COLORS[task.priority] || ''}`}>
+            {task.priority}
+          </span>
+        )}
+      </div>
+      {/* Assignee column */}
+      <div className="hidden sm:block text-[10.5px] text-[#9B8C82] text-right flex-shrink-0 truncate" style={{ width: 90 }}>
+        {assignee ? `${assignee.nickname || assignee.name} ${assignee.position_title || assignee.position || ''}`.trim() : ''}
       </div>
     </div>
   )
