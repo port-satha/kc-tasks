@@ -60,11 +60,19 @@ export default function KpiMilestoneCard({
   const todayQ = currentQuarter()
   const cur = Number(kpi.current_value) || 0
 
-  // Quarterly progress %. Only meaningful for the current calendar year.
-  const quarterTarget = targetForQuarter(kpi, todayQ)
-  const qpct = !quarterTarget
-    ? 0
-    : Math.max(0, Math.min(100, Math.round((cur / quarterTarget) * 100)))
+  // Hide the milestone row entirely if no per-quarter targets are set.
+  // Falls back to plain annual-target progress so the card stays useful
+  // even when the brand owner hasn't broken the year into quarters yet.
+  const hasMilestones = [1, 2, 3, 4].some(q => {
+    const v = kpi[`q${q}_target`]
+    return v != null && v !== ''
+  })
+
+  // Progress denominator: current quarter's milestone if set, else
+  // annual target. Either way, % reflects the right reference point.
+  const annualTarget = Number(kpi.target_value) || 0
+  const denom = hasMilestones ? targetForQuarter(kpi, todayQ) : annualTarget
+  const qpct = !denom ? 0 : Math.max(0, Math.min(100, Math.round((cur / denom) * 100)))
   const color = progressColor(qpct)
 
   const isOwner = kpi.owner_id && currentUserId && kpi.owner_id === currentUserId
@@ -104,32 +112,34 @@ export default function KpiMilestoneCard({
           {kpi.owner?.nickname ? ` · ${kpi.owner.nickname}` : ''}
         </p>
 
-        {/* 4-cell quarterly milestone row */}
-        <div className="grid grid-cols-4 gap-1 mt-2">
-          {[1, 2, 3, 4].map(q => {
-            const state = milestoneStateFor(kpi.year, q)
-            const tval = kpi[`q${q}_target`]
-            const text = tval != null && tval !== '' ? formatNumber(tval) : '—'
-            const cs = CELL_STYLE[state]
-            return (
-              <div
-                key={q}
-                className="rounded px-1 py-0.5 text-center"
-                style={{
-                  background: cs.background,
-                  border: `0.5px solid ${cs.borderColor}`,
-                }}
-              >
-                <p className="text-[8.5px] uppercase tracking-wider font-medium" style={{ color: cs.label }}>
-                  Q{q}
-                </p>
-                <p className="text-[10px] font-medium leading-tight" style={{ color: cs.value }}>
-                  {text}{state === 'past' && tval != null && tval !== '' ? ' ✓' : ''}
-                </p>
-              </div>
-            )
-          })}
-        </div>
+        {/* 4-cell quarterly milestone row — only when milestones are set */}
+        {hasMilestones && (
+          <div className="grid grid-cols-4 gap-1 mt-2">
+            {[1, 2, 3, 4].map(q => {
+              const state = milestoneStateFor(kpi.year, q)
+              const tval = kpi[`q${q}_target`]
+              const text = tval != null && tval !== '' ? formatNumber(tval) : '—'
+              const cs = CELL_STYLE[state]
+              return (
+                <div
+                  key={q}
+                  className="rounded px-1 py-0.5 text-center"
+                  style={{
+                    background: cs.background,
+                    border: `0.5px solid ${cs.borderColor}`,
+                  }}
+                >
+                  <p className="text-[8.5px] uppercase tracking-wider font-medium" style={{ color: cs.label }}>
+                    Q{q}
+                  </p>
+                  <p className="text-[10px] font-medium leading-tight" style={{ color: cs.value }}>
+                    {text}{state === 'past' && tval != null && tval !== '' ? ' ✓' : ''}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Progress bar — colored by quarterly progress */}
         <div className="h-[2px] bg-[rgba(0,0,0,0.04)] rounded-full mt-2 overflow-hidden">

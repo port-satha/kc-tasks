@@ -66,14 +66,17 @@ export default function OkrDashboard() {
 
   const [year, setYear] = useState(currentYear())
   const [quarter, setQuarter] = useState(currentQuarter()) // 1-4 or 'annual'
-  // Default landing: onest brand (can be overridden via URL ?level=...&brand=...)
+  // Default landing: brand context kept for when user clicks the Brand tab,
+  // but viewMode defaults to 'mine' so members land on their own OKRs.
   const [levelSelection, setLevelSelection] = useState({ level: 'brand', brand: 'onest', team: null })
   const [expandedChapter, setExpandedChapter] = useState(null) // UI-only: which chapter pill is expanded to show its teams
   // Phase 3: view mode — 'level' (company/brand/team), 'mine', or 'team-manage'
-  const [viewMode, setViewMode] = useState('level')
+  // Default: 'mine' (My OKRs) so first-time users land on something they own.
+  const [viewMode, setViewMode] = useState('mine')
   // Section 5: main-content tab — 'company' (KC health) | 'brand' | 'mine'.
   // 'team-manage' is reached via the Team I manage pill, not the tabs.
-  const [mainTab, setMainTab] = useState('brand')
+  // Defaults to 'mine' to match the viewMode default.
+  const [mainTab, setMainTab] = useState('mine')
   const [reportsCount, setReportsCount] = useState(0)
   const [myObjectives, setMyObjectives] = useState([])
   const [reportsData, setReportsData] = useState({ reports: [], objectives: [] })
@@ -117,7 +120,7 @@ export default function OkrDashboard() {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const view = params.get('view')
-    if (view === 'mine') { setViewMode('mine'); return }
+    if (view === 'mine' || view === 'my-okrs') { setViewMode('mine'); return }
     if (view === 'team-manage') { setViewMode('team-manage'); return }
     const lv = params.get('level')
     if (lv === 'brand' && BRANDS.includes(params.get('brand'))) {

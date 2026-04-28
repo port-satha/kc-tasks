@@ -48,27 +48,14 @@ export async function updateSession(request) {
     return NextResponse.redirect(url)
   }
 
-  // Check if profile is completed — the AppShell now mounts a non-dismissable
-  // ProfileGate modal in front of every authenticated route, so the
-  // /onboarding redirect here is largely vestigial. Kept as a fallback in
-  // case AppShell isn't on the requested route.
-  if (user && !pathname.startsWith('/onboarding') && !pathname.startsWith('/login') && !pathname.startsWith('/api')) {
-    try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('profile_complete')
-        .eq('id', user.id)
-        .single()
-
-      if (profile && profile.profile_complete === false) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/onboarding'
-        return NextResponse.redirect(url)
-      }
-    } catch (e) {
-      // Column may not exist yet — skip onboarding check
-    }
-  }
+  // Profile completion is now enforced entirely by the non-dismissable
+  // ProfileGate modal mounted inside AppShell — it intercepts the UI on
+  // whatever route the user lands on, blocks app access until the three
+  // required self-completed fields (nickname, full_name, position_title)
+  // are filled, and only requires fields the member can actually set
+  // themselves (team / squad / role / manager_id are admin-set per the
+  // brief and were blocking incomplete users at the legacy /onboarding
+  // form). The middleware redirect to /onboarding has been removed.
 
   return response
 }
