@@ -1291,6 +1291,10 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
             const canCheckIn = onCheckInKr && currentUserId && (
               kr.owner_id === currentUserId || obj.owner_id === currentUserId
             )
+            const pct2 = kr.is_compound && kr.target_value_2
+              ? Math.max(0, Math.min(100, Math.round((Number(kr.current_value_2 || 0) / Number(kr.target_value_2)) * 100)))
+              : 0
+            const color2 = progressColor(pct2)
             return (
               <div key={kr.id} className="bg-[rgba(255,255,255,0.5)] rounded-md px-2.5 py-2 flex items-start gap-2.5 group/kr">
                 <span className="text-[10px] text-[#9B8C82] font-medium w-8 flex-shrink-0">KR{idx+1}</span>
@@ -1299,15 +1303,39 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
                   {kr.owner && ownerName(kr.owner) && (
                     <p className="text-[10px] text-[#9B8C82] mt-0.5">{ownerName(kr.owner)}{kr.owner.position_title ? ` · ${kr.owner.position_title}` : ''}</p>
                   )}
-                  {krHistory && krHistory.length >= 2 && (
-                    <div className="mt-1"><KrSparkline checkIns={krHistory} kr={kr} /></div>
+                  {kr.is_compound ? (
+                    <div className="mt-1.5 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-[3px] bg-[rgba(0,0,0,0.04)] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${krPct}%`, background: krColor }} />
+                        </div>
+                        <span className="text-[9.5px] text-[#9B8C82] whitespace-nowrap">{Number(kr.current_value||0).toLocaleString()} / {Number(kr.target_value||0).toLocaleString()} {kr.unit}</span>
+                        <span className="text-[9.5px] font-medium" style={{ color: krColor }}>{krPct}%</span>
+                      </div>
+                      <p className="text-[9px] text-[#B7A99D] uppercase tracking-wider">{kr.compound_operator || 'AND'}</p>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-[3px] bg-[rgba(0,0,0,0.04)] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct2}%`, background: color2 }} />
+                        </div>
+                        <span className="text-[9.5px] text-[#9B8C82] whitespace-nowrap">{Number(kr.current_value_2||0).toLocaleString()} / {Number(kr.target_value_2||0).toLocaleString()} {kr.unit_2}</span>
+                        <span className="text-[9.5px] font-medium" style={{ color: color2 }}>{pct2}%</span>
+                      </div>
+                    </div>
+                  ) : (
+                    krHistory && krHistory.length >= 2 && (
+                      <div className="mt-1"><KrSparkline checkIns={krHistory} kr={kr} /></div>
+                    )
                   )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <div className="w-[60px] h-[3px] bg-[rgba(0,0,0,0.04)] rounded-full overflow-hidden">
-                    <div className="h-full" style={{ width: `${krPct}%`, background: krColor }} />
-                  </div>
-                  <span className="text-[10.5px] font-medium" style={{ color: krColor }}>{krPct}%</span>
+                  {!kr.is_compound && (
+                    <>
+                      <div className="w-[60px] h-[3px] bg-[rgba(0,0,0,0.04)] rounded-full overflow-hidden">
+                        <div className="h-full" style={{ width: `${krPct}%`, background: krColor }} />
+                      </div>
+                      <span className="text-[10.5px] font-medium" style={{ color: krColor }}>{krPct}%</span>
+                    </>
+                  )}
                   {canCheckIn && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onCheckInKr(kr, obj) }}
@@ -1564,6 +1592,10 @@ function OkrFormModal({ objective, year: defaultYear, quarter: defaultQuarter, m
         current_value: kr.current_value ?? 0,
         unit: kr.unit || '',
         owner_id: kr.owner_id || '',
+        is_compound: kr.is_compound || false,
+        target_value_2: kr.target_value_2 ?? '',
+        unit_2: kr.unit_2 || '',
+        compound_operator: kr.compound_operator || 'AND',
       }))
     }
     return [newBlankKr()]
@@ -1611,6 +1643,11 @@ function OkrFormModal({ objective, year: defaultYear, quarter: defaultQuarter, m
         current_value: kr.current_value === '' ? 0 : Number(kr.current_value),
         unit: kr.unit || null,
         owner_id: kr.owner_id || null,
+        is_compound: !!kr.is_compound,
+        target_value_2: kr.is_compound && kr.target_value_2 !== '' ? Number(kr.target_value_2) : null,
+        current_value_2: kr.is_compound ? 0 : null,
+        unit_2: kr.is_compound ? (kr.unit_2 || null) : null,
+        compound_operator: kr.is_compound ? (kr.compound_operator || 'AND') : null,
       })),
     })
   }
@@ -1826,6 +1863,35 @@ function OkrFormModal({ objective, year: defaultYear, quarter: defaultQuarter, m
                     </select>
                   </Field>
                 </div>
+                <div className="pl-10 pt-0.5">
+                  <button type="button" onClick={() => updateKr(idx, { is_compound: !kr.is_compound })}
+                    className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                      kr.is_compound
+                        ? 'border-[#2C2C2A] bg-[#2C2C2A] text-[#DFDDD9]'
+                        : 'border-[rgba(0,0,0,0.1)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.03)]'
+                    }`}>
+                    Compound KR
+                  </button>
+                </div>
+                {kr.is_compound && (
+                  <div className="pl-10 grid grid-cols-3 gap-2">
+                    <Field label="Operator" small>
+                      <select value={kr.compound_operator || 'AND'} onChange={e => updateKr(idx, { compound_operator: e.target.value })} className={smallInputCls}>
+                        <option value="AND">AND</option>
+                        <option value="OR">OR</option>
+                      </select>
+                    </Field>
+                    <Field label="Target 2" small>
+                      <input type="number" step="any" value={kr.target_value_2}
+                        onChange={e => updateKr(idx, { target_value_2: e.target.value })}
+                        className={smallInputCls} />
+                    </Field>
+                    <Field label="Unit 2" small>
+                      <input value={kr.unit_2 || ''} onChange={e => updateKr(idx, { unit_2: e.target.value })}
+                        placeholder="unit" className={smallInputCls} />
+                    </Field>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1838,7 +1904,7 @@ function OkrFormModal({ objective, year: defaultYear, quarter: defaultQuarter, m
 }
 
 function newBlankKr() {
-  return { title: '', kr_type: 'numeric', start_value: 0, target_value: '', current_value: 0, unit: '', owner_id: '' }
+  return { title: '', kr_type: 'numeric', start_value: 0, target_value: '', current_value: 0, unit: '', owner_id: '', is_compound: false, target_value_2: '', unit_2: '', compound_operator: 'AND' }
 }
 
 // ---------- Modal primitives ----------

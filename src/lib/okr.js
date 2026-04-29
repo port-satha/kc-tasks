@@ -135,8 +135,13 @@ export function calcKrPercent(kr) {
   const target = Number(kr.target_value)
   const current = Number(kr.current_value) || 0
   if (!target || target === start) return 0
-  const pct = ((current - start) / (target - start)) * 100
-  return Math.max(0, Math.min(100, Math.round(pct)))
+  const pct1 = Math.max(0, Math.min(100, Math.round(((current - start) / (target - start)) * 100)))
+  if (!kr.is_compound || !kr.target_value_2) return pct1
+  const target2 = Number(kr.target_value_2)
+  const current2 = Number(kr.current_value_2) || 0
+  if (!target2) return pct1
+  const pct2 = Math.max(0, Math.min(100, Math.round((current2 / target2) * 100)))
+  return kr.compound_operator === 'OR' ? Math.max(pct1, pct2) : Math.min(pct1, pct2)
 }
 
 // Objective % = average of KR %
