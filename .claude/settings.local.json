@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"C:/Users/mitda/OneDrive/Desktop/kc-tasks\" && if [ -n \"$(git status --porcelain)\" ]; then npm run build && git add -A && git commit -m \"feat: update KC Tasks $(date +%Y-%m-%d)\" && git push; fi",
+            "command": "cd \"C:/Dev/kind-collective/kc-tasks\" && if [ -n \"$(git status --porcelain)\" ]; then npm run build && git add -A && git commit -m \"feat: update KC Tasks $(date +%Y-%m-%d)\" && git push; fi",
             "timeout": 120,
             "statusMessage": "Building and deploying to GitHub..."
           }
