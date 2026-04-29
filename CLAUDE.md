@@ -268,6 +268,7 @@ If no nickname set, use initials.
 - Owner nicknames set in DB for all profiles: Ellie, Pim, Peem, Pim Sales, Ping, Jomjam, Big, Klao, Sa, Kwang Siri, Pin ✓
 - KPI quarterly milestones set for all 4 onest KPIs: Total Revenue (4M/10M/13M/13M), Online Revenue (800K/2M/2.4M/2.7M), Hero Products Found (0/0/1/3), Own Channel Repeat Rate (3/8/14/20) ✓
 - Full onest 2026 brand OKRs: 6 objectives (O1–O6), 15 KRs (7 compound), all owners correctly assigned — Ellie, Pim, Pla, Peem, Pim Sales, Big, Kwang Siri, Pin ✓
+- OKR section label: shows "Annual 2026" when all visible objectives are annual; shows "Q2 2026" when quarterly objectives present; follows quarter selector otherwise ✓
 
 ---
 
