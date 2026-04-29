@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useSupabase, useUser, useMembers } from '../lib/hooks'
 import {
@@ -71,7 +71,8 @@ export default function OkrDashboard() {
   // Default landing: brand context kept for when user clicks the Brand tab,
   // but viewMode defaults to 'mine' so members land on their own OKRs.
   const [levelSelection, setLevelSelection] = useState({ level: 'brand', brand: 'onest', team: null })
-  const [expandedChapter, setExpandedChapter] = useState(null) // UI-only: which chapter pill is expanded to show its teams
+  const [teamsOpen, setTeamsOpen] = useState(false)
+  const teamsRef = useRef(null)
   // Phase 3: view mode — 'level' (company/brand/team), 'mine', or 'team-manage'
   // Default: 'mine' (My OKRs) so first-time users land on something they own.
   const [viewMode, setViewMode] = useState('mine')
@@ -357,6 +358,15 @@ export default function OkrDashboard() {
   }, [supabase, year, quarter, levelSelection.level, levelSelection.brand, levelSelection.team, viewMode, user?.id])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!teamsOpen) return
+    const handler = (e) => {
+      if (teamsRef.current && !teamsRef.current.contains(e.target)) setTeamsOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [teamsOpen])
 
   const years = useMemo(() => availableYears([year]), [year])
 
@@ -645,7 +655,7 @@ export default function OkrDashboard() {
           >
             {reportsCount > 0 && (
               <button
-                onClick={() => { setViewMode('team-manage'); setExpandedChapter(null) }}
+                onClick={() => setViewMode('team-manage')}
                 className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium ${
                   viewMode === 'team-manage'
                     ? 'bg-ss-card text-ss-text'
@@ -672,7 +682,6 @@ export default function OkrDashboard() {
                   onClick={() => {
                     setViewMode('level')
                     setLevelSelection({ level: 'brand', brand: b.brand, team: null })
-                    setExpandedChapter(null)
                     setMainTab(b.brand === 'KC' ? 'company' : 'brand')
                   }}
                   style={active ? { background: b.activeBg, color: b.activeFg } : undefined}
@@ -687,66 +696,62 @@ export default function OkrDashboard() {
 
             <span className="w-px h-4 bg-[rgba(255,255,255,0.15)] mx-1" />
 
-            {/* Mobile: chapter pills — tap to expand sub-drawer */}
-            {CHAPTERS.map(chapter => {
-              const teamInChapterActive = viewMode === 'level' && !!levelSelection.team
-                && TEAM_TO_CHAPTER[levelSelection.team] === chapter
-              const isOpen = expandedChapter === chapter
-              const showActive = isOpen || teamInChapterActive
-              const label = chapter === 'Strategy' ? 'Strategy & BD' : chapter
-              return (
+            {/* Teams dropdown — hidden from simplified-nav roles */}
+            {!isSimplifiedNav && (
+              <div className="relative" ref={teamsRef}>
                 <button
-                  key={chapter}
-                  onClick={() => setExpandedChapter(isOpen ? null : chapter)}
-                  className={`md:hidden text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1 ${
-                    showActive
+                  onClick={() => setTeamsOpen(o => !o)}
+                  className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1.5 ${
+                    teamsOpen || levelSelection.team
                       ? 'bg-[#3A3A37] text-white'
                       : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
-                  }`}>
-                  {label}
-                  <span className={`text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>›</span>
+                  }`}
+                >
+                  Teams
+                  {levelSelection.team && (
+                    <span className="text-[9.5px] opacity-75">· {levelSelection.team}</span>
+                  )}
+                  <span className="text-[10px] opacity-50">▾</span>
                 </button>
-              )
-            })}
 
-            {/* Desktop: always-visible chapter groups with one-click team pills */}
-            <span className="hidden md:inline-flex items-center">
-              {CHAPTERS.map((chapter, ci) => {
-                const teams = teamsInChapter(chapter)
-                const label = chapter === 'Strategy' ? 'Strategy & BD' : chapter
-                return (
-                  <span key={chapter} className="inline-flex items-center gap-0.5">
-                    {ci > 0 && <span className="w-px h-3 bg-[rgba(255,255,255,0.15)] mx-1.5 flex-shrink-0" />}
-                    <span className="text-[9.5px] text-[#9F9A8C] font-medium whitespace-nowrap mr-0.5">{label}:</span>
-                    {teams.map(team => {
-                      const active = viewMode === 'level' && levelSelection.team === team
+                {teamsOpen && (
+                  <div className="absolute top-full left-0 mt-1.5 z-50 bg-ss-page rounded-[9px] shadow-xl border border-ss-divider min-w-[210px] overflow-hidden">
+                    {CHAPTERS.map((chapter, ci) => {
+                      const teams = teamsInChapter(chapter)
+                      const label = chapter === 'Strategy' ? 'Strategy & BD' : chapter
                       return (
-                        <button
-                          key={team}
-                          onClick={() => handlePickTeam(team)}
-                          className={`text-[10.5px] px-2 py-1 rounded-full transition-colors whitespace-nowrap ${
-                            active
-                              ? 'bg-ss-card text-ss-text font-medium'
-                              : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
-                          }`}
-                        >
-                          · {team}
-                        </button>
+                        <div key={chapter}>
+                          {ci > 0 && <div className="h-px bg-ss-divider" />}
+                          <div className="px-3 pt-2 pb-0.5">
+                            <span className="text-[9px] uppercase tracking-wider text-ss-hint font-medium">{label}</span>
+                          </div>
+                          {teams.map(team => {
+                            const active = levelSelection.team === team
+                            return (
+                              <button
+                                key={team}
+                                onClick={() => { handlePickTeam(team); setTeamsOpen(false) }}
+                                className={`w-full text-left text-[12px] px-3 py-2 flex items-center gap-2 transition-colors ${
+                                  active
+                                    ? 'bg-[#2C2C2A] text-white'
+                                    : 'text-ss-text hover:bg-ss-hover'
+                                }`}
+                              >
+                                <span
+                                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                  style={{ background: active ? '#fff' : '#B7A99D' }}
+                                />
+                                {team}
+                              </button>
+                            )
+                          })}
+                        </div>
                       )
                     })}
-                  </span>
-                )
-              })}
-            </span>
-          </div>
-
-          {/* Chapter sub-drawer — mobile only */}
-          <div className="md:hidden">
-            <ChapterDrawer
-              chapter={expandedChapter}
-              activeTeam={viewMode === 'level' ? levelSelection.team : null}
-              onPickTeam={handlePickTeam}
-            />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Context bar — persistent "you are here" + quarter selector */}
@@ -774,10 +779,8 @@ export default function OkrDashboard() {
                 if (t === 'company') {
                   setViewMode('level')
                   setLevelSelection({ level: 'brand', brand: 'KC', team: null })
-                  setExpandedChapter(null)
                 } else if (t === 'mine') {
                   setViewMode('mine')
-                  setExpandedChapter(null)
                 } else if (t === 'brand') {
                   setViewMode('level')
                   const currentBrand = levelSelection.brand
