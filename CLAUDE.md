@@ -249,26 +249,28 @@ If no nickname set, use initials.
 - Line of sight preview: [brand] › [KR] › [Your OKR] ✓
 - Approval flow: status pills (draft/pending/approved/changes_requested) ✓
 - Weekly check-in drawer: confidence tapper 1–5 + sparkline history ✓
-- First-time onboarding empty state: welcome card with 3-step guide ✓
+- First-time onboarding empty state: welcome card with 3-step guide (member role only) ✓
 - Cascade tree visualizer: Brand KR → Team OKRs → Individual OKRs ✓
 - Team directory: grouped by Chapter, member cards with incomplete state ✓
 - Profile completion gate: non-dismissable modal on first login ✓
+- Role-based nav: member/team_lead/manager see slim "You're viewing [brand] · [team]" context line; super_admin/admin/brand_owner see full dark pill bar ✓
+- Manager-warning banner hidden from super_admin and admin roles ✓
+- Footer team presence strip hidden from non-admin roles ✓
+- Zero objectives subtitle replaced with team/quarter context for all roles ✓
+- Empty quarterly milestone cells hidden instead of showing "—" ✓
 
 ---
 
 ## In progress — next to build
 
-- Hide pill bar / sub-tabs / context bar for member/team_lead roles
-- Fix manager-warning banner — do not show to super_admin or admin
-- Fix "0 objectives · 0 key results" header — hide count when zero
-- Remove footer team presence strip from /okrs for non-admin roles
+(Nothing currently queued — all chunks shipped.)
 
 ---
 
 ## Git situation (important)
 
-Local main is behind origin/main. Do NOT run git pull or git push to
-origin/main mid-rollout. After each chunk of work:
+Local branch is **kindfolks-rollout**, not main. Do NOT run git pull or
+git push to origin/main mid-rollout. After each chunk of work:
   git add -A
   git commit -m "chunk N: description"
 Do not push to origin until reconcile-git.sh is run at end of rollout.
