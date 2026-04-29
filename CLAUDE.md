@@ -240,9 +240,8 @@ If no nickname set, use initials.
 
 - Global rename: Tribe → Chapter, Backbone brand → KC ✓
 - Sandy Serenity design tokens in tailwind.config.js and globals.css ✓
-- Navigation pill bar: brand pills (filter) + chapter pills (disclosure only) ✓
-- Chapter sub-drawer: team pills appear below nav when chapter is clicked ✓
-- Context bar: "Viewing [Brand] › [Chapter] › [Team]" ✓
+- Navigation pill bar: brand pills + "Teams ▾" dropdown (replaces chapter/team pills); dropdown groups all teams by chapter; active team shown as inline badge; hidden for member/team_lead/manager roles ✓
+- Context bar: "Viewing [Brand] › [Chapter] › [Team]" + level badge ("Brand OKRs" grey / "[Team] Team OKRs" amber) ✓
 - KPI cards with quarterly milestone rows ✓
 - Member transparency: full read access to brand hierarchy ✓
 - OKR creation form: 3-step flow with cascade picker ✓
@@ -260,27 +259,30 @@ If no nickname set, use initials.
 - Empty quarterly milestone cells hidden instead of showing "—" ✓
 - Objective type taxonomy: Standard / Committed / Aspirational (replaces Must-win/Stretch/Experiment); stored as lowercase in tags array; single-select with descriptions in form ✓
 - Owner name display: uses profile.nickname everywhere; falls back to initials from full_name if nickname null; never shows raw name strings ✓
-- Owner nicknames set in DB for all profiles: Ellie, Pim, Peem, Pim Sales, Ping, Jomjam, Big, Klao, Sa ✓
 - Compound KR schema: is_compound, target_value_2, current_value_2, unit_2, compound_operator columns on key_results table ✓
 - Compound KR display: two stacked progress bars with AND/OR operator label between them; calcKrPercent returns min (AND) or max (OR) of both metrics ✓
 - Compound KR form: "Compound KR" toggle reveals Operator / Target 2 / Unit 2 fields ✓
 - Compound KR check-in: two value inputs in check-in drawer when is_compound = true; both current_value and current_value_2 updated on submit ✓
+- Chapter/team filter: brand view always shows all brand OKRs (no filter); clicking a team in the Teams dropdown switches to level:'team' and fetches only that team's OKRs; deselecting returns to brand view ✓
+- Position titles set in DB: Ellie → Brand Communications Strategist, Pim → Marketing & Brand Lead, Peem → Innovation Lead, Pim Sales → Senior Offline Sales & Operations, Ping → Design Director ✓
+- Owner nicknames set in DB for all profiles: Ellie, Pim, Peem, Pim Sales, Ping, Jomjam, Big, Klao, Sa ✓
 
 ---
 
 ## In progress — next to build
 
-(Nothing currently queued — all chunks shipped.)
+- KPI quarterly milestones: set Q1/Q2/Q3/Q4 targets for onest KPIs
+- Owner load tracker: warning when someone has 3+ Company KRs
+- Richer KR fields: target type, baseline value, how measured, risk
+- Dependency flags: Q2 blocker dates on KR cards
 
 ---
 
 ## Git situation (important)
 
-Local branch is **kindfolks-rollout**, not main. Do NOT run git pull or
-git push to origin/main mid-rollout. After each chunk of work:
+Working branch is **main**. After each chunk of work:
   git add -A
   git commit -m "chunk N: description"
-Do not push to origin until reconcile-git.sh is run at end of rollout.
 
 ---
 
