@@ -265,16 +265,19 @@ If no nickname set, use initials.
 - Compound KR check-in: two value inputs in check-in drawer when is_compound = true; both current_value and current_value_2 updated on submit ✓
 - Chapter/team filter: brand view always shows all brand OKRs (no filter); clicking a team in the Teams dropdown switches to level:'team' and fetches only that team's OKRs; deselecting returns to brand view ✓
 - Position titles set in DB: Ellie → Brand Communications Strategist, Pim → Marketing & Brand Lead, Peem → Innovation Lead, Pim Sales → Senior Offline Sales & Operations, Ping → Design Director ✓
-- Owner nicknames set in DB for all profiles: Ellie, Pim, Peem, Pim Sales, Ping, Jomjam, Big, Klao, Sa ✓
+- Owner nicknames set in DB for all profiles: Ellie, Pim, Peem, Pim Sales, Ping, Jomjam, Big, Klao, Sa, Kwang Siri, Pin ✓
+- KPI quarterly milestones set for all 4 onest KPIs: Total Revenue (4M/10M/13M/13M), Online Revenue (800K/2M/2.4M/2.7M), Hero Products Found (0/0/1/3), Own Channel Repeat Rate (3/8/14/20) ✓
+- Full onest 2026 brand OKRs: 6 objectives (O1–O6), 15 KRs (7 compound), all owners correctly assigned — Ellie, Pim, Pla, Peem, Pim Sales, Big, Kwang Siri, Pin ✓
 
 ---
 
 ## In progress — next to build
 
-- KPI quarterly milestones: set Q1/Q2/Q3/Q4 targets for onest KPIs
-- Owner load tracker: warning when someone has 3+ Company KRs
-- Richer KR fields: target type, baseline value, how measured, risk
-- Dependency flags: Q2 blocker dates on KR cards
+- Owner load tracker: visual warning when someone has 3+ KRs (Pim PO at ceiling with 3, Pim Sales at ceiling with 3)
+- Richer KR fields: target type enum, baseline value, how measured, risk/dependency notes
+- Dependency flags: Q2 blocker dates surfaced on KR cards (31 May and 30 Jun deadlines)
+- grubby 2026 brand OKRs: need same population process as onest
+- KC Shared 2026 brand OKRs: need same population process
 
 ---
 
