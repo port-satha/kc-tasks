@@ -718,7 +718,7 @@ export async function fetchCheckInsBatch(supabase, krIds, weeksBack = 8) {
 }
 
 // Save a check-in (upsert on kr+week)
-export async function saveCheckIn(supabase, { keyResultId, value, confidence, note, weekOf, createdBy, isSkipped = false }) {
+export async function saveCheckIn(supabase, { keyResultId, value, value2, confidence, note, weekOf, createdBy, isSkipped = false }) {
   const payload = {
     key_result_id: keyResultId,
     value: isSkipped ? null : (value === '' || value === null || value === undefined ? null : Number(value)),
@@ -737,12 +737,13 @@ export async function saveCheckIn(supabase, { keyResultId, value, confidence, no
     .single()
   if (error) throw error
 
-  // If it's not a skip, also update the KR's current_value
+  // Update current_value; for compound KRs also update current_value_2
   if (!isSkipped && payload.value !== null) {
-    await supabase
-      .from('key_results')
-      .update({ current_value: payload.value })
-      .eq('id', keyResultId)
+    const update = { current_value: payload.value }
+    if (value2 !== undefined && value2 !== '' && value2 !== null) {
+      update.current_value_2 = Number(value2)
+    }
+    await supabase.from('key_results').update(update).eq('id', keyResultId)
   }
   return data
 }

@@ -31,6 +31,7 @@ export default function CheckInDrawer({ krs, onClose, onSaved }) {
   const [forms, setForms] = useState(() =>
     (krs || []).map(kr => ({
       value: kr.current_value ?? '',
+      value2: kr.current_value_2 ?? '',
       confidence: null,
       note: '',
     }))
@@ -73,6 +74,7 @@ export default function CheckInDrawer({ krs, onClose, onSaved }) {
       await saveCheckIn(supabase, {
         keyResultId: kr.id,
         value: f.value,
+        value2: kr.is_compound ? f.value2 : undefined,
         confidence: f.confidence,
         note: f.note,
         weekOf,
@@ -212,14 +214,26 @@ function KrSection({ kr, form, history, onChange, onSubmit, onSkip, isActive, is
       )}
 
       {/* KR label + current/target */}
-      <div className="flex items-baseline justify-between gap-3 mb-3">
+      <div className="flex items-start justify-between gap-3 mb-3">
         <p className="text-[12.5px] font-medium text-ss-text leading-tight flex-1 min-w-0">
           {kr.title}
         </p>
-        <p className="text-[10.5px] text-ss-muted-text flex-shrink-0 whitespace-nowrap">
-          {kr.current_value ?? '—'}
-          {kr.target_value != null && <> / {kr.target_value}{kr.unit ? ` ${kr.unit}` : ''}</>}
-        </p>
+        {kr.is_compound ? (
+          <div className="text-right flex-shrink-0">
+            <p className="text-[10.5px] text-ss-muted-text whitespace-nowrap">
+              {kr.current_value ?? '—'} / {kr.target_value} {kr.unit}
+            </p>
+            <p className="text-[9px] text-ss-hint uppercase tracking-wider">{kr.compound_operator || 'AND'}</p>
+            <p className="text-[10.5px] text-ss-muted-text whitespace-nowrap">
+              {kr.current_value_2 ?? '—'} / {kr.target_value_2} {kr.unit_2}
+            </p>
+          </div>
+        ) : (
+          <p className="text-[10.5px] text-ss-muted-text flex-shrink-0 whitespace-nowrap">
+            {kr.current_value ?? '—'}
+            {kr.target_value != null && <> / {kr.target_value}{kr.unit ? ` ${kr.unit}` : ''}</>}
+          </p>
+        )}
       </div>
 
       {/* Sparkline history with live preview */}
@@ -227,26 +241,50 @@ function KrSection({ kr, form, history, onChange, onSubmit, onSkip, isActive, is
         <SparklineRow history={history} currentConfidence={form.confidence} />
       </div>
 
-      {/* Current value input */}
-      <div className="mb-3">
-        <label className="text-[10px] uppercase tracking-wider text-ss-muted-text block mb-1">
-          Current value
-        </label>
-        <div className="relative">
-          <input
-            type="number"
-            step="any"
-            value={form.value}
-            onChange={e => onChange({ value: e.target.value })}
-            disabled={isLocked}
-            className="w-full text-[14px] text-ss-text bg-ss-page border border-ss-divider rounded-md px-3 py-2 focus:outline-none focus:border-ss-text"
-          />
-          {kr.unit && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-ss-hint">
-              {kr.unit}
-            </span>
-          )}
+      {/* Current value input(s) */}
+      <div className="mb-3 space-y-2">
+        <div>
+          <label className="text-[10px] uppercase tracking-wider text-ss-muted-text block mb-1">
+            {kr.is_compound ? (kr.unit || 'Value 1') : 'Current value'}
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              step="any"
+              value={form.value}
+              onChange={e => onChange({ value: e.target.value })}
+              disabled={isLocked}
+              className="w-full text-[14px] text-ss-text bg-ss-page border border-ss-divider rounded-md px-3 py-2 focus:outline-none focus:border-ss-text"
+            />
+            {kr.unit && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-ss-hint">
+                {kr.unit}
+              </span>
+            )}
+          </div>
         </div>
+        {kr.is_compound && (
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-ss-muted-text block mb-1">
+              {kr.unit_2 || 'Value 2'}
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="any"
+                value={form.value2 ?? ''}
+                onChange={e => onChange({ value2: e.target.value })}
+                disabled={isLocked}
+                className="w-full text-[14px] text-ss-text bg-ss-page border border-ss-divider rounded-md px-3 py-2 focus:outline-none focus:border-ss-text"
+              />
+              {kr.unit_2 && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-ss-hint">
+                  {kr.unit_2}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Confidence */}
@@ -286,9 +324,9 @@ function KrSection({ kr, form, history, onChange, onSubmit, onSkip, isActive, is
         </button>
         <button
           onClick={onSubmit}
-          disabled={isLocked || saving || !form.confidence || form.value === '' || form.value === null}
+          disabled={isLocked || saving || !form.confidence || form.value === '' || form.value === null || (kr.is_compound && (form.value2 === '' || form.value2 === null || form.value2 === undefined))}
           className={`text-[11.5px] px-4 py-1.5 rounded-md font-medium transition-colors ${
-            (form.confidence && form.value !== '' && !saving && !isLocked)
+            (form.confidence && form.value !== '' && (!kr.is_compound || (form.value2 !== '' && form.value2 !== null)) && !saving && !isLocked)
               ? 'bg-ss-text text-ss-page hover:opacity-90'
               : 'bg-ss-muted text-ss-hint cursor-not-allowed'
           }`}

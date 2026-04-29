@@ -258,6 +258,13 @@ If no nickname set, use initials.
 - Footer team presence strip hidden from non-admin roles ✓
 - Zero objectives subtitle replaced with team/quarter context for all roles ✓
 - Empty quarterly milestone cells hidden instead of showing "—" ✓
+- Objective type taxonomy: Standard / Committed / Aspirational (replaces Must-win/Stretch/Experiment); stored as lowercase in tags array; single-select with descriptions in form ✓
+- Owner name display: uses profile.nickname everywhere; falls back to initials from full_name if nickname null; never shows raw name strings ✓
+- Owner nicknames set in DB for all profiles: Ellie, Pim, Peem, Pim Sales, Ping, Jomjam, Big, Klao, Sa ✓
+- Compound KR schema: is_compound, target_value_2, current_value_2, unit_2, compound_operator columns on key_results table ✓
+- Compound KR display: two stacked progress bars with AND/OR operator label between them; calcKrPercent returns min (AND) or max (OR) of both metrics ✓
+- Compound KR form: "Compound KR" toggle reveals Operator / Target 2 / Unit 2 fields ✓
+- Compound KR check-in: two value inputs in check-in drawer when is_compound = true; both current_value and current_value_2 updated on submit ✓
 
 ---
 
