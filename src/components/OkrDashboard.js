@@ -44,9 +44,9 @@ const BRAND_CHIP = {
 }
 
 const TAG_CHIP = {
-  'Must-win':   { bg: 'rgba(44,44,42,0.06)',   fg: '#5F5E5A' },
-  'Stretch':    { bg: 'rgba(186,117,23,0.08)', fg: '#854F0B' },
-  'Experiment': { bg: 'rgba(55,138,221,0.08)', fg: '#185FA5' },
+  'standard':     { label: 'Standard',     bg: '#E8E5DF', fg: '#5F5E5A' },
+  'committed':    { label: 'Committed',    bg: '#FAEEDA', fg: '#BA7517' },
+  'aspirational': { label: 'Aspirational', bg: '#EAF3DE', fg: '#2D5016' },
 }
 
 // Level pills — Kindfolks model: onest and grubby are consumer brands; KC
@@ -1242,7 +1242,7 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
               const t = TAG_CHIP[tag]
               return t ? (
                 <span key={tag} className="text-[9px] px-[7px] py-[2px] rounded-[10px]" style={{ background: t.bg, color: t.fg }}>
-                  {tag}
+                  {t.label}
                 </span>
               ) : null
             })}
@@ -1570,10 +1570,7 @@ function OkrFormModal({ objective, year: defaultYear, quarter: defaultQuarter, m
   })
 
   const toggleTag = (tag) => {
-    setForm(f => ({
-      ...f,
-      tags: f.tags.includes(tag) ? f.tags.filter(t => t !== tag) : [...f.tags, tag]
-    }))
+    setForm(f => ({ ...f, tags: f.tags.includes(tag) ? [] : [tag] }))
   }
 
   const updateKr = (idx, patch) => {
@@ -1753,19 +1750,23 @@ function OkrFormModal({ objective, year: defaultYear, quarter: defaultQuarter, m
             </select>
           </Field>
         </div>
-        <Field label="Tags">
-          <div className="flex gap-1.5 flex-wrap">
-            {['Must-win','Stretch','Experiment'].map(tag => {
-              const active = form.tags.includes(tag)
-              const t = TAG_CHIP[tag]
+        <Field label="Objective Type">
+          <div className="flex flex-col gap-1.5">
+            {[
+              { key: 'standard',     label: 'Standard',     desc: '70% = good year' },
+              { key: 'committed',    label: 'Committed',    desc: '100% expected — missing = explain' },
+              { key: 'aspirational', label: 'Aspirational', desc: 'stretch goal — 70% = great, learning prioritized' },
+            ].map(({ key, label, desc }) => {
+              const active = form.tags.includes(key)
               return (
-                <button type="button" key={tag} onClick={() => toggleTag(tag)}
-                  className={`text-[11px] px-3 py-1 rounded-full border transition-colors ${
+                <button type="button" key={key} onClick={() => toggleTag(key)}
+                  className={`text-left px-3 py-2 rounded-lg border transition-colors ${
                     active
                       ? 'border-[#2C2C2A] bg-[#2C2C2A] text-[#DFDDD9]'
-                      : 'border-[rgba(0,0,0,0.1)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.03)]'
+                      : 'border-[rgba(0,0,0,0.1)] text-[#2C2C2A] hover:bg-[rgba(0,0,0,0.03)]'
                   }`}>
-                  {tag}
+                  <span className="text-[11.5px] font-medium">{label}</span>
+                  <span className={`text-[10px] ml-2 ${active ? 'opacity-60' : 'text-[#9B8C82]'}`}>{desc}</span>
                 </button>
               )
             })}
