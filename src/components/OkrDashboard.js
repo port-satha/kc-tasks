@@ -339,7 +339,10 @@ export default function OkrDashboard() {
         const kpiOpts = { year, level: levelSelection.level }
         const okrOpts = { year, quarter, level: levelSelection.level }
         if (levelSelection.brand) { kpiOpts.brand = levelSelection.brand; okrOpts.brand = levelSelection.brand }
-        if (levelSelection.team)  { kpiOpts.team  = levelSelection.team;  okrOpts.team  = levelSelection.team  }
+        // team is applied client-side when level === 'brand' (chapter team filter)
+        if (levelSelection.level === 'team' && levelSelection.team) {
+          kpiOpts.team = levelSelection.team; okrOpts.team = levelSelection.team
+        }
         const [kpiData, okrData] = await Promise.all([
           fetchKpis(supabase, kpiOpts),
           fetchObjectives(supabase, okrOpts),
@@ -356,6 +359,15 @@ export default function OkrDashboard() {
   useEffect(() => { load() }, [load])
 
   const years = useMemo(() => availableYears([year]), [year])
+
+  // Client-side team filter: when a team pill is active at brand level, filter
+  // objectives to those whose owner is on that team.
+  const teamFilteredObjectives = useMemo(() => {
+    if (levelSelection.level === 'brand' && levelSelection.team) {
+      return objectives.filter(obj => obj.owner?.team === levelSelection.team)
+    }
+    return objectives
+  }, [objectives, levelSelection.level, levelSelection.team])
 
   const stats = useMemo(() => {
     // When viewing My OKRs (any role), count personal objectives only.
@@ -678,7 +690,7 @@ export default function OkrDashboard() {
               Chapters
             </span>
             {CHAPTERS.map(chapter => {
-              const teamInChapterActive = viewMode === 'level' && levelSelection.level === 'team'
+              const teamInChapterActive = viewMode === 'level' && !!levelSelection.team
                 && TEAM_TO_CHAPTER[levelSelection.team] === chapter
               const isOpen = expandedChapter === chapter
               const showActive = isOpen || teamInChapterActive
@@ -702,10 +714,14 @@ export default function OkrDashboard() {
           {/* Chapter sub-drawer */}
           <ChapterDrawer
             chapter={expandedChapter}
-            activeTeam={viewMode === 'level' && levelSelection.level === 'team' ? levelSelection.team : null}
+            activeTeam={viewMode === 'level' ? levelSelection.team : null}
             onPickTeam={(team) => {
               setViewMode('level')
-              setLevelSelection({ level: 'team', brand: null, team })
+              setLevelSelection(prev => ({
+                level: 'brand',
+                brand: prev.brand,
+                team: prev.team === team ? null : team,
+              }))
               setMainTab('brand')
             }}
           />
@@ -939,11 +955,11 @@ export default function OkrDashboard() {
                 )}
               </div>
             </div>
-            {objectives.length === 0 ? (
+            {teamFilteredObjectives.length === 0 ? (
               <p className="text-[11px] text-[#B7A99D] italic py-3">No objectives for this quarter yet.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {objectives.map(obj => (
+                {teamFilteredObjectives.map(obj => (
                   <ObjectiveCard key={obj.id} obj={obj}
                     expanded={!!expandedOkrs[obj.id]}
                     onToggle={() => setExpandedOkrs(prev => ({ ...prev, [obj.id]: !prev[obj.id] }))}
