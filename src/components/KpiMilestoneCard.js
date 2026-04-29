@@ -112,18 +112,22 @@ export default function KpiMilestoneCard({
           {kpi.owner?.nickname ? ` · ${kpi.owner.nickname}` : ''}
         </p>
 
-        {/* 4-cell quarterly milestone row — only when milestones are set */}
+        {/* Quarterly milestone cells — only render cells that have a target set.
+            Empty cells are hidden entirely (never show "—"). The whole row
+            disappears when no milestones are set (hasMilestones === false). */}
         {hasMilestones && (
-          <div className="grid grid-cols-4 gap-1 mt-2">
-            {[1, 2, 3, 4].map(q => {
+          <div className="flex gap-1 mt-2 flex-wrap">
+            {[1, 2, 3, 4].filter(q => {
+              const v = kpi[`q${q}_target`]
+              return v != null && v !== ''
+            }).map(q => {
               const state = milestoneStateFor(kpi.year, q)
               const tval = kpi[`q${q}_target`]
-              const text = tval != null && tval !== '' ? formatNumber(tval) : '—'
               const cs = CELL_STYLE[state]
               return (
                 <div
                   key={q}
-                  className="rounded px-1 py-0.5 text-center"
+                  className="rounded px-1.5 py-0.5 text-center min-w-[2.5rem]"
                   style={{
                     background: cs.background,
                     border: `0.5px solid ${cs.borderColor}`,
@@ -133,7 +137,7 @@ export default function KpiMilestoneCard({
                     Q{q}
                   </p>
                   <p className="text-[10px] font-medium leading-tight" style={{ color: cs.value }}>
-                    {text}{state === 'past' && tval != null && tval !== '' ? ' ✓' : ''}
+                    {formatNumber(tval)}{state === 'past' ? ' ✓' : ''}
                   </p>
                 </div>
               )

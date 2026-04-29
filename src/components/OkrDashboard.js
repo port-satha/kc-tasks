@@ -63,6 +63,7 @@ export default function OkrDashboard() {
   const { user, profile } = useUser()
   const { members } = useMembers()
   const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin'
+  const isSimplifiedNav = ['member', 'team_lead', 'manager'].includes(profile?.role)
 
   const [year, setYear] = useState(currentYear())
   const [quarter, setQuarter] = useState(currentQuarter()) // 1-4 or 'annual'
@@ -356,9 +357,15 @@ export default function OkrDashboard() {
   const years = useMemo(() => availableYears([year]), [year])
 
   const stats = useMemo(() => {
+    if (isSimplifiedNav) {
+      const myTotal = myObjectives.length
+      const myKrs = myObjectives.reduce((s, o) => s + (o.key_results?.length || 0), 0)
+      if (myTotal === 0) return `${year} · Q${quarter} · ${profile?.team || 'Your team'}`
+      return `${year} · ${myTotal} objectives · ${myKrs} key results`
+    }
     const totalKrs = objectives.reduce((s, o) => s + (o.key_results?.length || 0), 0)
     return `${year} · ${objectives.length} objectives · ${totalKrs} key results`
-  }, [year, objectives])
+  }, [year, objectives, myObjectives, quarter, isSimplifiedNav, profile?.team])
 
   const handleSaveKpi = async (payload) => {
     try {
@@ -525,7 +532,30 @@ export default function OkrDashboard() {
               value={year}
               onChange={setYear}
             />
-            {/* Quarter selector now lives inside ContextBar (Section 4) */}
+            {/* Quarter selector — inline for simplified nav, inside ContextBar for full nav */}
+            {isSimplifiedNav && (
+              <div className="flex items-center gap-0.5 bg-[#F5F3EF] rounded-full px-0.5 py-0.5 border border-[#E8E5DF]">
+                {[1, 2, 3, 4].map(q => (
+                  <button
+                    key={q}
+                    onClick={() => setQuarter(q)}
+                    className={`text-[10.5px] px-2.5 py-1 rounded-full transition-colors font-medium ${
+                      quarter === q ? 'bg-[#2C2C2A] text-[#DFDDD9]' : 'text-[#9B8C82] hover:bg-[#EEEAE4]'
+                    }`}
+                  >
+                    Q{q}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setQuarter('annual')}
+                  className={`text-[10.5px] px-2.5 py-1 rounded-full transition-colors font-medium ${
+                    quarter === 'annual' ? 'bg-[#2C2C2A] text-[#DFDDD9]' : 'text-[#9B8C82] hover:bg-[#EEEAE4]'
+                  }`}
+                >
+                  Annual
+                </button>
+              </div>
+            )}
             {/* Phase 5: Export button for people / admin */}
             {(isAdmin || profile?.role === 'people') && (
               <div className="relative group">
@@ -553,148 +583,170 @@ export default function OkrDashboard() {
       </div>
 
       {/* ============================================================
-          Section 4 — Top navigation pill bar.
-          Three layers stacked: pill bar (dark) → optional chapter
-          drawer (slightly lighter dark) → context bar (light Linen).
+          Section 4 — Top navigation.
+          Full pill bar for super_admin / admin / brand_owner.
+          Slim context line for member / team_lead / manager.
           ============================================================ */}
 
-      {/* Pill bar — dark band. Section 4 of the brief. The "My OKRs" pill
-          was removed in Section 5 — that mode is now reachable through the
-          MainTabs strip below ContextBar. "Team I manage" stays here as a
-          manager-specific entry point. */}
-      <div
-        className="px-[18px] py-[10px] mt-2 flex gap-1.5 flex-wrap items-center"
-        style={{ background: '#2C2C2A' }}
-      >
-        {reportsCount > 0 && (
-          <button
-            onClick={() => { setViewMode('team-manage'); setExpandedChapter(null) }}
-            className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium ${
-              viewMode === 'team-manage'
-                ? 'bg-ss-card text-ss-text'
-                : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
-            }`}>
-            Team I manage
-          </button>
-        )}
-
-        <span className="w-px h-4 bg-[rgba(255,255,255,0.15)] mx-1" />
-
-        {/* Brand pills */}
-        <span className="text-[9.5px] uppercase tracking-[1px] text-[#9F9A8C] font-medium mr-0.5 hidden md:inline">
-          Brands
-        </span>
-        {[
-          { brand: 'onest',  label: 'onest',       dot: '#2D5016', activeBg: '#2D5016', activeFg: '#C8E6A8' },
-          { brand: 'grubby', label: 'grubby',      dot: '#1B4D2A', activeBg: '#1B4D2A', activeFg: '#A8D4B0' },
-          { brand: 'KC',     label: 'KC · Shared', dot: '#888780', activeBg: '#4A4A47', activeFg: '#D4CFC9' },
-        ].map(b => {
-          const active = viewMode === 'level' && levelSelection.level === 'brand' && levelSelection.brand === b.brand
-          return (
-            <button key={b.brand}
-              onClick={() => {
-                setViewMode('level')
-                setLevelSelection({ level: 'brand', brand: b.brand, team: null })
-                setExpandedChapter(null)
-                // Section 5 tab sync: KC → Company tab, others → Brand tab
-                setMainTab(b.brand === 'KC' ? 'company' : 'brand')
+      {isSimplifiedNav ? (
+        /* Simplified nav — single slim "You're viewing" line */
+        <div
+          className="px-[18px] py-2.5 flex items-center gap-1.5 flex-wrap"
+          style={{ background: '#F5F3EF', borderBottom: '0.5px solid #E8E5DF' }}
+        >
+          <span className="text-[9.5px] uppercase tracking-[1px] text-[#B7A99D]">You're viewing</span>
+          {profile?.squad && profile.squad !== 'both' && (
+            <span
+              className="text-[11px] font-medium"
+              style={{
+                color: profile.squad === 'onest' ? '#2D5016'
+                  : profile.squad === 'grubby' ? '#1B4D2A'
+                  : '#5F5E5A',
               }}
-              style={active ? { background: b.activeBg, color: b.activeFg } : undefined}
-              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1.5 ${
-                active ? '' : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
-              }`}>
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: b.dot }} />
-              {b.label}
-            </button>
-          )
-        })}
+            >
+              {profile.squad === 'KC' ? 'KC · Shared' : profile.squad}
+            </span>
+          )}
+          {profile?.team && (
+            <>
+              <span className="text-[#B7A99D]">·</span>
+              <span className="text-[11px] font-medium text-[#2C2C2A]">{profile.team}</span>
+            </>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Pill bar — dark band. The "My OKRs" pill was removed in Section 5 —
+              that mode is now reachable through MainTabs. "Team I manage" stays
+              here as a manager-specific entry point. */}
+          <div
+            className="px-[18px] py-[10px] mt-2 flex gap-1.5 flex-wrap items-center"
+            style={{ background: '#2C2C2A' }}
+          >
+            {reportsCount > 0 && (
+              <button
+                onClick={() => { setViewMode('team-manage'); setExpandedChapter(null) }}
+                className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium ${
+                  viewMode === 'team-manage'
+                    ? 'bg-ss-card text-ss-text'
+                    : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
+                }`}>
+                Team I manage
+              </button>
+            )}
 
-        <span className="w-px h-4 bg-[rgba(255,255,255,0.15)] mx-1" />
+            <span className="w-px h-4 bg-[rgba(255,255,255,0.15)] mx-1" />
 
-        {/* Chapter pills — disclosure only. Click rotates the chevron
-            and reveals the chapter sub-drawer below. */}
-        <span className="text-[9.5px] uppercase tracking-[1px] text-[#9F9A8C] font-medium mr-0.5 hidden md:inline">
-          Chapters
-        </span>
-        {CHAPTERS.map(chapter => {
-          const teamInChapterActive = viewMode === 'level' && levelSelection.level === 'team'
-            && TEAM_TO_CHAPTER[levelSelection.team] === chapter
-          const isOpen = expandedChapter === chapter
-          const showActive = isOpen || teamInChapterActive
-          const label = chapter === 'Strategy' ? 'Strategy & BD' : chapter
-          return (
-            <button
-              key={chapter}
-              onClick={() => setExpandedChapter(isOpen ? null : chapter)}
-              className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1 ${
-                showActive
-                  ? 'bg-[#3A3A37] text-white'
-                  : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
-              }`}>
-              {label}
-              <span className={`text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>›</span>
-            </button>
-          )
-        })}
-      </div>
+            {/* Brand pills */}
+            <span className="text-[9.5px] uppercase tracking-[1px] text-[#9F9A8C] font-medium mr-0.5 hidden md:inline">
+              Brands
+            </span>
+            {[
+              { brand: 'onest',  label: 'onest',       dot: '#2D5016', activeBg: '#2D5016', activeFg: '#C8E6A8' },
+              { brand: 'grubby', label: 'grubby',      dot: '#1B4D2A', activeBg: '#1B4D2A', activeFg: '#A8D4B0' },
+              { brand: 'KC',     label: 'KC · Shared', dot: '#888780', activeBg: '#4A4A47', activeFg: '#D4CFC9' },
+            ].map(b => {
+              const active = viewMode === 'level' && levelSelection.level === 'brand' && levelSelection.brand === b.brand
+              return (
+                <button key={b.brand}
+                  onClick={() => {
+                    setViewMode('level')
+                    setLevelSelection({ level: 'brand', brand: b.brand, team: null })
+                    setExpandedChapter(null)
+                    setMainTab(b.brand === 'KC' ? 'company' : 'brand')
+                  }}
+                  style={active ? { background: b.activeBg, color: b.activeFg } : undefined}
+                  className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1.5 ${
+                    active ? '' : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
+                  }`}>
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: b.dot }} />
+                  {b.label}
+                </button>
+              )
+            })}
 
-      {/* Chapter sub-drawer */}
-      <ChapterDrawer
-        chapter={expandedChapter}
-        activeTeam={viewMode === 'level' && levelSelection.level === 'team' ? levelSelection.team : null}
-        onPickTeam={(team) => {
-          setViewMode('level')
-          setLevelSelection({ level: 'team', brand: null, team })
-          setMainTab('brand')
-        }}
-      />
+            <span className="w-px h-4 bg-[rgba(255,255,255,0.15)] mx-1" />
 
-      {/* Context bar — persistent "you are here" + quarter selector */}
-      <ContextBar
-        viewMode={viewMode}
-        levelSelection={levelSelection}
-        quarter={quarter}
-        onQuarterChange={setQuarter}
-        brandOwners={brandOwners}
-      />
+            {/* Chapter pills — disclosure only */}
+            <span className="text-[9.5px] uppercase tracking-[1px] text-[#9F9A8C] font-medium mr-0.5 hidden md:inline">
+              Chapters
+            </span>
+            {CHAPTERS.map(chapter => {
+              const teamInChapterActive = viewMode === 'level' && levelSelection.level === 'team'
+                && TEAM_TO_CHAPTER[levelSelection.team] === chapter
+              const isOpen = expandedChapter === chapter
+              const showActive = isOpen || teamInChapterActive
+              const label = chapter === 'Strategy' ? 'Strategy & BD' : chapter
+              return (
+                <button
+                  key={chapter}
+                  onClick={() => setExpandedChapter(isOpen ? null : chapter)}
+                  className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1 ${
+                    showActive
+                      ? 'bg-[#3A3A37] text-white'
+                      : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
+                  }`}>
+                  {label}
+                  <span className={`text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>›</span>
+                </button>
+              )
+            })}
+          </div>
 
-      {/* Section 5 — main content tabs (Company health / Brand: X / My OKRs) */}
-      {viewMode !== 'team-manage' && (
-        <MainTabs
-          active={mainTab}
-          // Tab label tracks the active brand pill when in level mode, so
-          // clicking onest / grubby / KC updates "Brand: …" live. Falls
-          // back to the user's own squad on My OKRs / Company tabs.
-          brand={
-            viewMode === 'level' && levelSelection?.brand
-              ? levelSelection.brand
-              : (profile?.squad || 'KC')
-          }
-          isManager={reportsCount > 0}
-          onSwitchToManage={() => setViewMode('team-manage')}
-          onChange={(t) => {
-            setMainTab(t)
-            if (t === 'company') {
+          {/* Chapter sub-drawer */}
+          <ChapterDrawer
+            chapter={expandedChapter}
+            activeTeam={viewMode === 'level' && levelSelection.level === 'team' ? levelSelection.team : null}
+            onPickTeam={(team) => {
               setViewMode('level')
-              setLevelSelection({ level: 'brand', brand: 'KC', team: null })
-              setExpandedChapter(null)
-            } else if (t === 'mine') {
-              setViewMode('mine')
-              setExpandedChapter(null)
-            } else if (t === 'brand') {
-              setViewMode('level')
-              // If currently on KC (Company tab default), drop user back to
-              // their primary brand. Otherwise keep current selection.
-              if (levelSelection.level === 'brand' && levelSelection.brand === 'KC' && profile?.squad && profile.squad !== 'KC') {
-                setLevelSelection({
-                  level: 'brand',
-                  brand: profile.squad === 'both' ? 'onest' : profile.squad,
-                  team: null,
-                })
+              setLevelSelection({ level: 'team', brand: null, team })
+              setMainTab('brand')
+            }}
+          />
+
+          {/* Context bar — persistent "you are here" + quarter selector */}
+          <ContextBar
+            viewMode={viewMode}
+            levelSelection={levelSelection}
+            quarter={quarter}
+            onQuarterChange={setQuarter}
+            brandOwners={brandOwners}
+          />
+
+          {/* Section 5 — main content tabs (Company health / Brand: X / My OKRs) */}
+          {viewMode !== 'team-manage' && (
+            <MainTabs
+              active={mainTab}
+              brand={
+                viewMode === 'level' && levelSelection?.brand
+                  ? levelSelection.brand
+                  : (profile?.squad || 'KC')
               }
-            }
-          }}
-        />
+              isManager={reportsCount > 0}
+              onSwitchToManage={() => setViewMode('team-manage')}
+              onChange={(t) => {
+                setMainTab(t)
+                if (t === 'company') {
+                  setViewMode('level')
+                  setLevelSelection({ level: 'brand', brand: 'KC', team: null })
+                  setExpandedChapter(null)
+                } else if (t === 'mine') {
+                  setViewMode('mine')
+                  setExpandedChapter(null)
+                } else if (t === 'brand') {
+                  setViewMode('level')
+                  if (levelSelection.level === 'brand' && levelSelection.brand === 'KC' && profile?.squad && profile.squad !== 'KC') {
+                    setLevelSelection({
+                      level: 'brand',
+                      brand: profile.squad === 'both' ? 'onest' : profile.squad,
+                      team: null,
+                    })
+                  }
+                }
+              }}
+            />
+          )}
+        </>
       )}
 
       {/* Friday banner — Section 9. Dark Charcoal card with icon, week
@@ -1860,7 +1912,7 @@ function MyOkrsView({ profile, objectives, year, quarter, expandedOkrs, onToggle
         </div>
       </div>
 
-      {!hasManager && (
+      {!hasManager && profile?.role === 'member' && (
         <div className="mb-3 bg-[rgba(186,117,23,0.08)] border border-[rgba(186,117,23,0.2)] rounded-lg px-3 py-2 text-[11px] text-[#854F0B]">
           ⚠ You don't have a manager assigned. Ask an admin to set one in /settings/org so you can request approval.
         </div>
