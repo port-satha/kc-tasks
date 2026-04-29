@@ -357,15 +357,20 @@ export default function OkrDashboard() {
   const years = useMemo(() => availableYears([year]), [year])
 
   const stats = useMemo(() => {
-    if (isSimplifiedNav) {
+    // When viewing My OKRs (any role), count personal objectives only.
+    // Show team/quarter context instead of zeros for all roles.
+    if (viewMode === 'mine' || isSimplifiedNav) {
       const myTotal = myObjectives.length
       const myKrs = myObjectives.reduce((s, o) => s + (o.key_results?.length || 0), 0)
-      if (myTotal === 0) return `${year} · Q${quarter} · ${profile?.team || 'Your team'}`
+      if (myTotal === 0) {
+        const ctx = profile?.team || profile?.squad || null
+        return `${year} · Q${quarter}${ctx ? ` · ${ctx}` : ''}`
+      }
       return `${year} · ${myTotal} objectives · ${myKrs} key results`
     }
     const totalKrs = objectives.reduce((s, o) => s + (o.key_results?.length || 0), 0)
     return `${year} · ${objectives.length} objectives · ${totalKrs} key results`
-  }, [year, objectives, myObjectives, quarter, isSimplifiedNav, profile?.team])
+  }, [year, objectives, myObjectives, quarter, viewMode, isSimplifiedNav, profile?.team, profile?.squad])
 
   const handleSaveKpi = async (payload) => {
     try {
@@ -1919,11 +1924,23 @@ function MyOkrsView({ profile, objectives, year, quarter, expandedOkrs, onToggle
       )}
 
       {objectives.length === 0 ? (
-        <OnboardingEmptyState
-          profile={profile}
-          onWriteFirst={onAdd}
-          onSeeBrand={onSeeBrand}
-        />
+        profile?.role === 'member' ? (
+          <OnboardingEmptyState
+            profile={profile}
+            onWriteFirst={onAdd}
+            onSeeBrand={onSeeBrand}
+          />
+        ) : (
+          <div className="py-10 flex flex-col items-center gap-3">
+            <p className="text-[12px] text-[#9B8C82]">No objectives for this period.</p>
+            <button
+              onClick={onAdd}
+              className="text-[11.5px] px-4 py-2 bg-[#2C2C2A] text-[#DFDDD9] rounded-lg font-medium hover:opacity-90"
+            >
+              + Add objective
+            </button>
+          </div>
+        )
       ) : (
         <div className="flex flex-col gap-2">
           {objectives.map(obj => (
