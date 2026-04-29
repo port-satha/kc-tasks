@@ -360,15 +360,6 @@ export default function OkrDashboard() {
 
   const years = useMemo(() => availableYears([year]), [year])
 
-  // Client-side team filter: when a team pill is active at brand level, filter
-  // objectives to those whose owner is on that team.
-  const teamFilteredObjectives = useMemo(() => {
-    if (levelSelection.level === 'brand' && levelSelection.team) {
-      return objectives.filter(obj => obj.owner?.team === levelSelection.team)
-    }
-    return objectives
-  }, [objectives, levelSelection.level, levelSelection.team])
-
   const stats = useMemo(() => {
     // When viewing My OKRs (any role), count personal objectives only.
     // Show team/quarter context instead of zeros for all roles.
@@ -717,10 +708,11 @@ export default function OkrDashboard() {
             activeTeam={viewMode === 'level' ? levelSelection.team : null}
             onPickTeam={(team) => {
               setViewMode('level')
+              const isDeselect = levelSelection.team === team
               setLevelSelection(prev => ({
-                level: 'brand',
+                level: isDeselect ? 'brand' : 'team',
                 brand: prev.brand,
-                team: prev.team === team ? null : team,
+                team: isDeselect ? null : team,
               }))
               setMainTab('brand')
             }}
@@ -757,13 +749,11 @@ export default function OkrDashboard() {
                   setExpandedChapter(null)
                 } else if (t === 'brand') {
                   setViewMode('level')
-                  if (levelSelection.level === 'brand' && levelSelection.brand === 'KC' && profile?.squad && profile.squad !== 'KC') {
-                    setLevelSelection({
-                      level: 'brand',
-                      brand: profile.squad === 'both' ? 'onest' : profile.squad,
-                      team: null,
-                    })
-                  }
+                  const currentBrand = levelSelection.brand
+                  const defaultBrand = (currentBrand === 'KC' && profile?.squad && profile.squad !== 'KC')
+                    ? (profile.squad === 'both' ? 'onest' : profile.squad)
+                    : (currentBrand || 'KC')
+                  setLevelSelection({ level: 'brand', brand: defaultBrand, team: null })
                 }
               }}
             />
@@ -955,11 +945,11 @@ export default function OkrDashboard() {
                 )}
               </div>
             </div>
-            {teamFilteredObjectives.length === 0 ? (
+            {objectives.length === 0 ? (
               <p className="text-[11px] text-[#B7A99D] italic py-3">No objectives for this quarter yet.</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {teamFilteredObjectives.map(obj => (
+                {objectives.map(obj => (
                   <ObjectiveCard key={obj.id} obj={obj}
                     expanded={!!expandedOkrs[obj.id]}
                     onToggle={() => setExpandedOkrs(prev => ({ ...prev, [obj.id]: !prev[obj.id] }))}

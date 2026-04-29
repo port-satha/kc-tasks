@@ -62,6 +62,22 @@ export default function ContextBar({
         ))}
       </div>
 
+      {/* View level badge — "Brand OKRs" or "[Team] Team OKRs" */}
+      {viewMode === 'level' && (
+        <span
+          className="text-[10px] px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+          style={
+            levelSelection?.level === 'team'
+              ? { background: '#FAEEDA', color: '#854F0B' }
+              : { background: '#E8E5DF', color: '#5F5E5A' }
+          }
+        >
+          {levelSelection?.level === 'team'
+            ? `${levelSelection.team} · Team OKRs`
+            : 'Brand OKRs'}
+        </span>
+      )}
+
       {/* Brand-owner badge */}
       {viewMode === 'level' && levelSelection?.brand && (
         <span
