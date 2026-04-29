@@ -953,7 +953,7 @@ export default function OkrDashboard() {
           <div className="px-[18px] pt-2 pb-8">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-[9.5px] uppercase tracking-[1px] text-[#9B8C82] font-medium">
-                {levelTitle(levelSelection)} OKRs — {quarter === 'annual' ? 'Annual' : `Q${quarter}`} {year}
+                {levelTitle(levelSelection)} OKRs — {objectives.length > 0 && objectives.every(o => o.is_annual) ? 'Annual' : (quarter === 'annual' ? 'Annual' : `Q${quarter}`)} {year}
               </h2>
               <div className="flex items-center gap-2">
                 {/* Section 11 — alignment tree, only meaningful at brand level */}
