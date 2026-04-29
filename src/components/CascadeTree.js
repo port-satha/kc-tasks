@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useSupabase } from '../lib/hooks'
-import { fetchAllObjectivesForYear, calcKrPercent, calcObjectivePercent, progressColor } from '../lib/okr'
+import { fetchAllObjectivesForYear, calcKrPercent, calcObjectivePercent, progressColor, ownerName } from '../lib/okr'
 import ApprovalStatusPill from './ApprovalStatusPill'
 
 const NODE_STYLES = {
@@ -198,7 +198,7 @@ export default function CascadeTree({ year, brand, onClose, onNavigate }) {
                                         {team.title}
                                       </span>
                                       <span className="text-[10.5px] text-ss-muted-text whitespace-nowrap">
-                                        {team.owner?.nickname || ''}
+                                        {ownerName(team.owner) || ''}
                                       </span>
                                       <span className="text-[10.5px] font-medium" style={{ color: progressColor(teamPct) }}>
                                         {teamPct}%
@@ -235,7 +235,7 @@ export default function CascadeTree({ year, brand, onClose, onNavigate }) {
                                             {indiv.title}
                                           </span>
                                           <span className="text-[10.5px] text-ss-muted-text whitespace-nowrap">
-                                            {indiv.owner?.nickname || '—'}
+                                            {ownerName(indiv.owner) || '—'}
                                           </span>
                                           {indiv.approval_status && indiv.approval_status !== 'approved' && (
                                             <ApprovalStatusPill status={indiv.approval_status} />

@@ -6,7 +6,7 @@
 export async function fetchKpis(supabase, { year, level = 'brand', brand = null, team = null } = {}) {
   let q = supabase
     .from('kpis')
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url)')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url)')
     .eq('year', year)
     .eq('level', level)
     .order('created_at', { ascending: true })
@@ -21,7 +21,7 @@ export async function createKpi(supabase, payload) {
   const { data, error } = await supabase
     .from('kpis')
     .insert(payload)
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url)')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url)')
     .single()
   if (error) throw error
   return data
@@ -32,7 +32,7 @@ export async function updateKpi(supabase, kpiId, updates) {
     .from('kpis')
     .update({ ...updates, last_updated_at: new Date().toISOString() })
     .eq('id', kpiId)
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url)')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url)')
     .single()
   if (error) throw error
   return data
@@ -47,7 +47,7 @@ export async function deleteKpi(supabase, kpiId) {
 export async function fetchObjectives(supabase, { year, quarter, level = 'brand', brand = null, team = null } = {}) {
   let q = supabase
     .from('objectives')
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url), key_results!objective_id(*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url))')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url), key_results!objective_id(*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url))')
     .eq('year', year)
     .eq('level', level)
     .order('created_at', { ascending: true })
@@ -75,7 +75,7 @@ export async function createObjective(supabase, payload) {
   const { data, error } = await supabase
     .from('objectives')
     .insert(payload)
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url)')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url)')
     .single()
   if (error) throw error
   return { ...data, key_results: [] }
@@ -86,7 +86,7 @@ export async function updateObjective(supabase, objectiveId, updates) {
     .from('objectives')
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', objectiveId)
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url), key_results!objective_id(*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url))')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url), key_results!objective_id(*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url))')
     .single()
   if (error) throw error
   return data
@@ -102,7 +102,7 @@ export async function createKeyResult(supabase, payload) {
   const { data, error } = await supabase
     .from('key_results')
     .insert(payload)
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url)')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url)')
     .single()
   if (error) throw error
   return data
@@ -113,7 +113,7 @@ export async function updateKeyResult(supabase, krId, updates) {
     .from('key_results')
     .update(updates)
     .eq('id', krId)
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url)')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url)')
     .single()
   if (error) throw error
   return data
@@ -154,6 +154,17 @@ export function calcKpiPercent(kpi) {
   const current = Number(kpi.current_value) || 0
   if (!target) return 0
   return Math.max(0, Math.min(100, Math.round((current / target) * 100)))
+}
+
+// Display name for an owner profile object.
+// Uses nickname if set; falls back to initials from full_name; then '?'.
+export function ownerName(owner) {
+  if (!owner) return null
+  if (owner.nickname) return owner.nickname
+  if (owner.full_name) {
+    return owner.full_name.split(' ').filter(Boolean).map(w => w[0].toUpperCase()).join('')
+  }
+  return '?'
 }
 
 // Color for progress %
@@ -373,7 +384,7 @@ export function canWriteAtLevel({ level, brand, team, profile, brandOwners, team
 export async function fetchParentCandidates(supabase, { year, quarter, level, brand }) {
   if (level === 'brand') return []
   const filters = []
-  const selectFields = 'id, title, level, brand, team, quarter, is_annual, owner:profiles!owner_id(nickname, position_title), key_results!objective_id(id, title, kr_type, unit, target_value, display_order)'
+  const selectFields = 'id, title, level, brand, team, quarter, is_annual, owner:profiles!owner_id(nickname, full_name, position_title), key_results!objective_id(id, title, kr_type, unit, target_value, display_order)'
 
   // Brand-level parents (matching brand if specified, else all)
   let bq = supabase.from('objectives').select(selectFields)
@@ -395,7 +406,7 @@ export async function fetchParentCandidates(supabase, { year, quarter, level, br
 export async function fetchAllObjectivesForYear(supabase, year) {
   const { data, error } = await supabase
     .from('objectives')
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color), key_results!objective_id(id, title, unit, current_value, start_value, target_value, kr_type, display_order)')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color), key_results!objective_id(id, title, unit, current_value, start_value, target_value, kr_type, display_order)')
     .eq('year', year)
   if (error) throw error
   return (data || []).map(o => ({
@@ -466,7 +477,7 @@ export function findRoot(flatObjectives, nodeId) {
 export async function fetchMyIndividualObjectives(supabase, { ownerId, year, quarter }) {
   let q = supabase
     .from('objectives')
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url), key_results!objective_id(*, owner:profiles!owner_id(id, nickname, position_title))')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url), key_results!objective_id(*, owner:profiles!owner_id(id, nickname, full_name, position_title))')
     .eq('level', 'individual')
     .eq('owner_id', ownerId)
     .eq('year', year)
@@ -491,7 +502,7 @@ export async function fetchReportsIndividualObjectives(supabase, { managerId, ye
 
   let q = supabase
     .from('objectives')
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url), key_results!objective_id(*)')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url), key_results!objective_id(*)')
     .eq('level', 'individual')
     .in('owner_id', reportIds)
     .eq('year', year)
@@ -519,7 +530,7 @@ export async function countDirectReports(supabase, userId) {
 // Parent candidates for an individual OKR: team OKRs for user's team, else brand OKRs.
 // Includes KRs so the picker can offer KR-level cascade.
 export async function fetchIndividualParentCandidates(supabase, { year, quarter, userTeam, userSquad }) {
-  const selectFields = 'id, title, level, brand, team, quarter, is_annual, owner:profiles!owner_id(nickname, position_title), key_results!objective_id(id, title, kr_type, unit, target_value, display_order)'
+  const selectFields = 'id, title, level, brand, team, quarter, is_annual, owner:profiles!owner_id(nickname, full_name, position_title), key_results!objective_id(id, title, kr_type, unit, target_value, display_order)'
   const queries = []
   if (userTeam) {
     queries.push(
@@ -907,7 +918,7 @@ export async function updateKpiCurrentValue(supabase, kpiId, { value, note, user
       last_updated_by: userId,
     })
     .eq('id', kpiId)
-    .select('*, owner:profiles!owner_id(id, nickname, position_title, avatar_color, avatar_url)')
+    .select('*, owner:profiles!owner_id(id, nickname, full_name, position_title, avatar_color, avatar_url)')
     .single()
   if (error) throw error
   return data

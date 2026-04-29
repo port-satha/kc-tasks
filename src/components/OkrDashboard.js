@@ -19,6 +19,7 @@ import {
   fetchReflectionsForObjectives, isLastWeekOfQuarter, isFriday,
   fetchLocks, isPeriodLocked, createEditRequest,
   fetchAllObjectivesForYear,
+  ownerName,
 } from '../lib/okr'
 import KrSparkline from './KrSparkline'
 import ChapterDrawer from './ChapterDrawer'
@@ -1246,8 +1247,8 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
               ) : null
             })}
           </div>
-          {obj.owner && (
-            <p className="text-[10px] text-[#9B8C82] mt-1">Owner: {obj.owner.nickname} {obj.owner.position_title}</p>
+          {obj.owner && ownerName(obj.owner) && (
+            <p className="text-[10px] text-[#9B8C82] mt-1">Owner: {ownerName(obj.owner)}{obj.owner.position_title ? ` · ${obj.owner.position_title}` : ''}</p>
           )}
         </div>
         <div className="text-right flex-shrink-0">
@@ -1295,8 +1296,8 @@ function ObjectiveCard({ obj, expanded, onToggle, onEdit, onDelete, onViewTree, 
                 <span className="text-[10px] text-[#9B8C82] font-medium w-8 flex-shrink-0">KR{idx+1}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-[11.5px] text-[#2C2C2A] leading-tight">{kr.title}</p>
-                  {kr.owner && (
-                    <p className="text-[10px] text-[#9B8C82] mt-0.5">{kr.owner.nickname} {kr.owner.position_title}</p>
+                  {kr.owner && ownerName(kr.owner) && (
+                    <p className="text-[10px] text-[#9B8C82] mt-0.5">{ownerName(kr.owner)}{kr.owner.position_title ? ` · ${kr.owner.position_title}` : ''}</p>
                   )}
                   {krHistory && krHistory.length >= 2 && (
                     <div className="mt-1"><KrSparkline checkIns={krHistory} kr={kr} /></div>
