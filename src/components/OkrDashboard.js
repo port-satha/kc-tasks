@@ -376,6 +376,17 @@ export default function OkrDashboard() {
     return `${year} · ${objectives.length} objectives · ${totalKrs} key results`
   }, [year, objectives, myObjectives, quarter, viewMode, isSimplifiedNav, profile?.team, profile?.squad])
 
+  const handlePickTeam = (team) => {
+    setViewMode('level')
+    const isDeselect = levelSelection.team === team
+    setLevelSelection(prev => ({
+      level: isDeselect ? 'brand' : 'team',
+      brand: prev.brand,
+      team: isDeselect ? null : team,
+    }))
+    setMainTab('brand')
+  }
+
   const handleSaveKpi = async (payload) => {
     try {
       const isNew = !editingKpi
@@ -676,10 +687,7 @@ export default function OkrDashboard() {
 
             <span className="w-px h-4 bg-[rgba(255,255,255,0.15)] mx-1" />
 
-            {/* Chapter pills — disclosure only */}
-            <span className="text-[9.5px] uppercase tracking-[1px] text-[#9F9A8C] font-medium mr-0.5 hidden md:inline">
-              Chapters
-            </span>
+            {/* Mobile: chapter pills — tap to expand sub-drawer */}
             {CHAPTERS.map(chapter => {
               const teamInChapterActive = viewMode === 'level' && !!levelSelection.team
                 && TEAM_TO_CHAPTER[levelSelection.team] === chapter
@@ -690,7 +698,7 @@ export default function OkrDashboard() {
                 <button
                   key={chapter}
                   onClick={() => setExpandedChapter(isOpen ? null : chapter)}
-                  className={`text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1 ${
+                  className={`md:hidden text-[11px] px-3 py-1.5 rounded-full transition-colors whitespace-nowrap font-medium inline-flex items-center gap-1 ${
                     showActive
                       ? 'bg-[#3A3A37] text-white'
                       : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
@@ -700,23 +708,46 @@ export default function OkrDashboard() {
                 </button>
               )
             })}
+
+            {/* Desktop: always-visible chapter groups with one-click team pills */}
+            <span className="hidden md:inline-flex items-center">
+              {CHAPTERS.map((chapter, ci) => {
+                const teams = teamsInChapter(chapter)
+                const label = chapter === 'Strategy' ? 'Strategy & BD' : chapter
+                return (
+                  <span key={chapter} className="inline-flex items-center gap-0.5">
+                    {ci > 0 && <span className="w-px h-3 bg-[rgba(255,255,255,0.15)] mx-1.5 flex-shrink-0" />}
+                    <span className="text-[9.5px] text-[#9F9A8C] font-medium whitespace-nowrap mr-0.5">{label}:</span>
+                    {teams.map(team => {
+                      const active = viewMode === 'level' && levelSelection.team === team
+                      return (
+                        <button
+                          key={team}
+                          onClick={() => handlePickTeam(team)}
+                          className={`text-[10.5px] px-2 py-1 rounded-full transition-colors whitespace-nowrap ${
+                            active
+                              ? 'bg-ss-card text-ss-text font-medium'
+                              : 'text-[#C2B39F] hover:bg-[rgba(255,255,255,0.06)]'
+                          }`}
+                        >
+                          · {team}
+                        </button>
+                      )
+                    })}
+                  </span>
+                )
+              })}
+            </span>
           </div>
 
-          {/* Chapter sub-drawer */}
-          <ChapterDrawer
-            chapter={expandedChapter}
-            activeTeam={viewMode === 'level' ? levelSelection.team : null}
-            onPickTeam={(team) => {
-              setViewMode('level')
-              const isDeselect = levelSelection.team === team
-              setLevelSelection(prev => ({
-                level: isDeselect ? 'brand' : 'team',
-                brand: prev.brand,
-                team: isDeselect ? null : team,
-              }))
-              setMainTab('brand')
-            }}
-          />
+          {/* Chapter sub-drawer — mobile only */}
+          <div className="md:hidden">
+            <ChapterDrawer
+              chapter={expandedChapter}
+              activeTeam={viewMode === 'level' ? levelSelection.team : null}
+              onPickTeam={handlePickTeam}
+            />
+          </div>
 
           {/* Context bar — persistent "you are here" + quarter selector */}
           <ContextBar
