@@ -1313,7 +1313,7 @@ function SectionDroppable({ section, tasks, activeDragId, onOpen, isOverdue, tog
   const dropIds = tasks.length === 0 ? [`section:${section}`] : ids
   return (
     <SortableContext items={dropIds} strategy={verticalListSortingStrategy}>
-      <div className="bg-[#F5F3EF] border border-[rgba(0,0,0,0.04)] rounded-xl overflow-hidden mb-2 min-h-[4px]">
+      <div className="mb-2 flex flex-col gap-[2px] min-h-[4px]">
         {tasks.length === 0 && activeDragId && (
           <EmptySectionDropZone section={section} />
         )}
@@ -1345,14 +1345,21 @@ function EmptySectionDropZone({ section }) {
 }
 
 function SortableTaskRow({ task, activeDragId, onOpen, isOverdue, toggleTaskDone, hasSubtasks, isExpanded, onToggleExpand, members, onInlineUpdate, allSections, currentSection, onMoveToSection, isSelected, onSelect, parentTask, columnConfig, onToggleChildDone, onInlineUpdateChild, toggleSubtask }) {
+  const overdue = isOverdue(task)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: task.id })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
   }
+  const leftBorder = isSelected
+    ? 'rounded-r-xl border-l-[3px] border-l-[#2C2C2A]'
+    : overdue
+      ? 'rounded-r-xl border-l-[3px] border-l-[#A32D2D]'
+      : 'rounded-xl'
   return (
-    <div ref={setNodeRef} style={style} className="relative">
+    <div ref={setNodeRef} style={style}
+      className={`relative bg-[#F5F3EF] border border-[rgba(0,0,0,0.04)] overflow-hidden ${leftBorder}`}>
       {isOver && activeDragId && activeDragId !== task.id && (
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#2C2C2A] mx-4 rounded-full z-[1]" />
       )}
@@ -1565,7 +1572,7 @@ const TaskRow = memo(function TaskRow({ task, onOpen, isOverdue, onToggleDone, h
 
   return (
     <div onClick={e => onSelect?.(task.id, e)}
-      className={`flex gap-2 px-4 py-2 border-b border-[rgba(0,0,0,0.04)] last:border-0 hover:bg-[rgba(0,0,0,0.015)] items-center group/row transition-colors ${isDragging ? 'opacity-40 bg-[rgba(44,44,42,0.04)]' : ''} ${isSelected ? 'bg-[rgba(44,44,42,0.04)] border-l-[3px] border-l-[#2C2C2A]' : overdue ? 'border-l-[3px] border-l-[#A32D2D]' : ''}`}
+      className={`flex gap-2 px-4 py-2 hover:bg-[rgba(0,0,0,0.015)] items-center group/row transition-colors ${isDragging ? 'opacity-40 bg-[rgba(44,44,42,0.04)]' : ''} ${isSelected ? 'bg-[rgba(44,44,42,0.04)]' : ''}`}
       style={overdue && !isSelected ? { background: 'rgba(226,74,74,0.03)' } : undefined}>
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <div className="relative flex-shrink-0" ref={moveRef}>
