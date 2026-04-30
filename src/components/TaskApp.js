@@ -610,21 +610,17 @@ export default function TaskApp({ projectId = null, projectName = null, settings
         }
       }
     }
-    // Only recently assigned tasks are pulled out of their sections into the virtual section
-    const virtualTaskIds = new Set()
-    for (const t of recentlyAssignedTasks) virtualTaskIds.add(t.id)
-
     const filteredActive = []
     const filteredDone = []
     for (const t of filtered) {
       if (t.progress === 'Done') filteredDone.push(t); else filteredActive.push(t)
     }
 
-    // Group active tasks by section (overdue tasks stay in their original sections)
+    // Group active tasks by section — all tasks stay in their original sections
+    // Recently assigned tasks also appear in the virtual section above, but are NOT excluded here
     const grouped = {}
     for (const s of allSections) grouped[s] = []
     for (const t of filteredActive) {
-      if (!projectId && virtualTaskIds.has(t.id)) continue
       // When overdue filter is active, skip non-overdue tasks
       if (filterOverdue && !projectId) {
         if (!(t.due && t.progress !== 'Done' && new Date(t.due).getTime() < todayMs)) continue
