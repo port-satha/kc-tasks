@@ -44,6 +44,8 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const [filterGroup, setFilterGroup] = useState(initialPrefs.filterGroup || 'none')
   const [showGroupMenu, setShowGroupMenu] = useState(false)
   const groupMenuRef = useRef(null)
+  // My Tasks overdue filter — when true only overdue tasks are shown
+  const [filterOverdue, setFilterOverdue] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   // Persist key prefs on change
@@ -567,7 +569,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   // the actual inputs changes — not on every state change in the component.
   const {
     filtered, overdueTasks, recentlyAssignedTasks,
-    filteredActive, filteredDone, grouped, boardColumns,
+    filteredActive, filteredDone, grouped, sectionOverdueCounts, boardColumns,
   } = useMemo(() => {
     const myMemberId = currentMember?.id
     const myUserId = user?.id
@@ -590,14 +592,15 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       filtered.push(t)
     }
 
-    // Virtual sections (My Tasks only)
+    // Compute overdue list for stats + filter pill (tasks stay in their sections — no displacement)
     const overdueTasks = []
+    // Compute recently assigned virtual section (still floats to top)
     const recentlyAssignedTasks = []
     if (!projectId) {
       for (const t of filtered) {
         if (t.progress === 'Done') continue
         if (t.due && new Date(t.due).getTime() < todayMs) {
-          overdueTasks.push(t); continue
+          overdueTasks.push(t)
         }
         if (t.assigned_to === myMemberId) {
           if (t._isLegacySubtask) { recentlyAssignedTasks.push(t); continue }
@@ -607,8 +610,8 @@ export default function TaskApp({ projectId = null, projectName = null, settings
         }
       }
     }
+    // Only recently assigned tasks are pulled out of their sections into the virtual section
     const virtualTaskIds = new Set()
-    for (const t of overdueTasks) virtualTaskIds.add(t.id)
     for (const t of recentlyAssignedTasks) virtualTaskIds.add(t.id)
 
     const filteredActive = []
@@ -617,11 +620,15 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       if (t.progress === 'Done') filteredDone.push(t); else filteredActive.push(t)
     }
 
-    // Group active tasks by section (skipping virtual-section tasks)
+    // Group active tasks by section (overdue tasks stay in their original sections)
     const grouped = {}
     for (const s of allSections) grouped[s] = []
     for (const t of filteredActive) {
       if (!projectId && virtualTaskIds.has(t.id)) continue
+      // When overdue filter is active, skip non-overdue tasks
+      if (filterOverdue && !projectId) {
+        if (!(t.due && t.progress !== 'Done' && new Date(t.due).getTime() < todayMs)) continue
+      }
       const sec = t.section || 'Recently assigned'
       if (!grouped[sec]) grouped[sec] = []
       grouped[sec].push(t)
@@ -636,6 +643,14 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       }
     }
 
+    // Per-section overdue counts (computed before filterOverdue narrows the view)
+    const sectionOverdueCounts = {}
+    for (const sec in grouped) {
+      sectionOverdueCounts[sec] = grouped[sec].filter(
+        t => t.due && t.progress !== 'Done' && new Date(t.due).getTime() < todayMs
+      ).length
+    }
+
     const boardColumns = {}
     for (const p of TASK_PROGRESS) boardColumns[p] = []
     for (const t of filtered) {
@@ -644,10 +659,10 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       boardColumns[prog].push(t)
     }
 
-    return { filtered, overdueTasks, recentlyAssignedTasks, filteredActive, filteredDone, grouped, boardColumns }
+    return { filtered, overdueTasks, recentlyAssignedTasks, filteredActive, filteredDone, grouped, sectionOverdueCounts, boardColumns }
   }, [
     topLevelTasks, activeTasks, doneTasks,
-    filterStatus, filterPriority, filterAssignee, filterSource, filterGroup, searchQuery,
+    filterStatus, filterPriority, filterAssignee, filterSource, filterGroup, filterOverdue, searchQuery,
     projectId, currentMember?.id, user?.id, allSections, todayMs,
   ])
 
@@ -839,6 +854,20 @@ export default function TaskApp({ projectId = null, projectName = null, settings
           </div>
         )}
 
+        {/* Overdue filter pill — My Tasks only, only when there are overdue tasks */}
+        {!projectId && overdueTasks.length > 0 && (
+          <button onClick={() => setFilterOverdue(v => !v)}
+            className="text-[11px] px-2.5 py-1 rounded-full flex items-center gap-1 font-medium flex-shrink-0 transition-colors"
+            style={{
+              background: filterOverdue ? 'rgba(226,74,74,0.15)' : 'rgba(226,74,74,0.10)',
+              color: '#A32D2D',
+              border: '0.5px solid rgba(226,74,74,0.2)',
+            }}>
+            ⚠ Overdue · {overdueTasks.length}
+            {filterOverdue && <span className="ml-0.5 opacity-70">✕</span>}
+          </button>
+        )}
+
         <div className="ml-auto flex-shrink-0">
           <input type="text" placeholder="Search tasks..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             className="text-[11px] border border-[rgba(0,0,0,0.06)] rounded-lg px-3 py-1.5 w-32 sm:w-48 bg-[#F5F3EF] text-[#2C2C2A] placeholder-[#B7A99D] focus:outline-none focus:border-[#2C2C2A] transition-colors" />
@@ -918,10 +947,9 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             </div>
           </div>
 
-          {/* Virtual sections (My Tasks only) — Overdue + Recently assigned at top */}
-          {!projectId && (overdueTasks.length > 0 || recentlyAssignedTasks.length > 0) && (
+          {/* Recently assigned virtual section — floats to top of My Tasks only */}
+          {!projectId && recentlyAssignedTasks.length > 0 && (
             <VirtualSections
-              overdueTasks={overdueTasks}
               recentlyAssignedTasks={recentlyAssignedTasks}
               members={members}
               currentMember={currentMember}
@@ -939,7 +967,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
             />
           )}
 
-          <ListView grouped={grouped} collapsedSections={collapsedSections} toggleSection={toggleSection}
+          <ListView grouped={grouped} sectionOverdueCounts={sectionOverdueCounts} collapsedSections={collapsedSections} toggleSection={toggleSection}
             expandedTasks={expandedTasks} toggleTaskExpand={toggleTaskExpand} toggleSubtask={handleToggleSubtask}
             toggleTaskDone={handleToggleTaskDone} onOpen={setActiveTask} isOverdue={isOverdue}
             members={members} onInlineUpdate={handleInlineUpdate}
@@ -1103,7 +1131,7 @@ const ChildTaskRow = memo(function ChildTaskRow({ task, parentTask, onOpen, isOv
   )
 })
 
-function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDelete, onAddToSection, isDragOver, onSectionDragStart, onSectionDragOver, onSectionDrop, onSectionDragEnd }) {
+function SectionHeader({ section, taskCount, overdueCount, collapsed, onToggle, onRename, onDelete, onAddToSection, isDragOver, onSectionDragStart, onSectionDragOver, onSectionDrop, onSectionDragEnd }) {
   const [showMenu, setShowMenu] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState(section)
@@ -1149,6 +1177,9 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
             title="Click to rename">{section}</span>
         )}
         <span className="text-[10px] bg-[rgba(0,0,0,0.04)] text-[#B7A99D] rounded-full px-2 py-0.5 cursor-pointer" onClick={onToggle}>{taskCount}</span>
+        {overdueCount > 0 && (
+          <span className="text-[9px] font-medium rounded-[8px] cursor-pointer" style={{ background: 'rgba(226,74,74,0.1)', color: '#A32D2D', padding: '1px 6px' }} onClick={onToggle}>{overdueCount} overdue</span>
+        )}
       </div>
       <button onClick={(e) => { e.stopPropagation(); onAddToSection(section) }}
         className="text-[#B7A99D] hover:text-[#2C2C2A] text-[13px] px-1 py-0.5 rounded hover:bg-[rgba(0,0,0,0.03)] sm:opacity-0 sm:group-hover/sec:opacity-100 transition-all"
@@ -1177,7 +1208,7 @@ function SectionHeader({ section, taskCount, collapsed, onToggle, onRename, onDe
   )
 }
 
-function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, onDndReorder, allSections, onMoveToSection, onRenameSection, onDeleteSection, onReorderSections, selectedTaskIds, onSelectTask, onToggleChildDone, onInlineUpdateChild, onAddToSection, columnConfig }) {
+function ListView({ grouped, sectionOverdueCounts, collapsedSections, toggleSection, expandedTasks, toggleTaskExpand, toggleSubtask, toggleTaskDone, onOpen, isOverdue, members, onInlineUpdate, onDndReorder, allSections, onMoveToSection, onRenameSection, onDeleteSection, onReorderSections, selectedTaskIds, onSelectTask, onToggleChildDone, onInlineUpdateChild, onAddToSection, columnConfig }) {
   const [draggedSection, setDraggedSection] = useState(null)
   const [dropTargetSection, setDropTargetSection] = useState(null)
 
@@ -1233,7 +1264,7 @@ function ListView({ grouped, collapsedSections, toggleSection, expandedTasks, to
           return (
             <div key={section} className="mb-1">
               <div className="sticky top-[88px] z-[10] bg-[#DFDDD9] pt-1">
-                <SectionHeader section={section} taskCount={sectionTasks.length} collapsed={collapsed}
+                <SectionHeader section={section} taskCount={sectionTasks.length} overdueCount={sectionOverdueCounts?.[section] ?? 0} collapsed={collapsed}
                   onToggle={() => toggleSection(section)} onRename={onRenameSection} onDelete={onDeleteSection} onAddToSection={onAddToSection}
                   isDragOver={dropTargetSection === section && draggedSection !== section}
                   onSectionDragStart={() => setDraggedSection(section)}
@@ -1417,11 +1448,12 @@ function DatePicker({ value, onChange }) {
   }
 
   const isOverdue = value && !open && selected && selected < today
+  const isToday = value && !open && selected && selected.getTime() === today.getTime()
 
   return (
     <div className="relative" ref={ref} onMouseDown={e => e.stopPropagation()} onDragStart={e => e.stopPropagation()} draggable={false}>
       <button type="button" onClick={() => { setOpen(!open); if (value) setViewDate(new Date(value + 'T00:00:00')) }}
-        className={`text-[11px] border border-transparent hover:border-[rgba(0,0,0,0.1)] hover:bg-[rgba(0,0,0,0.02)] rounded px-1 py-0.5 cursor-pointer w-full text-left transition-colors ${isOverdue ? 'text-[#A32D2D] font-medium' : value ? 'text-[#B7A99D]' : 'text-[#B7A99D]'}`}>
+        className={`text-[11px] border border-transparent hover:border-[rgba(0,0,0,0.1)] hover:bg-[rgba(0,0,0,0.02)] rounded px-1 py-0.5 cursor-pointer w-full text-left transition-colors ${isOverdue ? 'text-[#A32D2D] font-semibold' : isToday ? 'text-[#639922] font-semibold' : value ? 'text-[#B7A99D]' : 'text-[#B7A99D]'}`}>
         {value ? formatSmartDate(value) : '—'}
       </button>
       {open && (
@@ -1531,7 +1563,8 @@ const TaskRow = memo(function TaskRow({ task, onOpen, isOverdue, onToggleDone, h
 
   return (
     <div onClick={e => onSelect?.(task.id, e)}
-      className={`flex gap-2 px-4 py-2 border-b border-[rgba(0,0,0,0.04)] last:border-0 hover:bg-[rgba(0,0,0,0.015)] items-center group/row transition-colors ${isDragging ? 'opacity-40 bg-[rgba(44,44,42,0.04)]' : ''} ${isSelected ? 'bg-[rgba(44,44,42,0.04)] border-l-2 border-l-[#2C2C2A]' : ''}`}>
+      className={`flex gap-2 px-4 py-2 border-b border-[rgba(0,0,0,0.04)] last:border-0 hover:bg-[rgba(0,0,0,0.015)] items-center group/row transition-colors ${isDragging ? 'opacity-40 bg-[rgba(44,44,42,0.04)]' : ''} ${isSelected ? 'bg-[rgba(44,44,42,0.04)] border-l-[3px] border-l-[#2C2C2A]' : overdue ? 'border-l-[3px] border-l-[#A32D2D]' : ''}`}
+      style={overdue && !isSelected ? { background: 'rgba(226,74,74,0.03)' } : undefined}>
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <div className="relative flex-shrink-0" ref={moveRef}>
           {/* Drag handle — mobile: always visible 24x24px, desktop: visible on hover */}
@@ -1560,7 +1593,7 @@ const TaskRow = memo(function TaskRow({ task, onOpen, isOverdue, onToggleDone, h
           </button>
         ) : <span className="w-4 flex-shrink-0"></span>}
         <button onClick={(e) => { e.stopPropagation(); onToggleDone(task) }}
-          className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${task.progress === 'Done' ? 'border-[#1D9E75] bg-[#1D9E75] hover:bg-[#179467]' : 'border-[#B7A99D] hover:border-[#1D9E75]'}`}>
+          className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${task.progress === 'Done' ? 'border-[#1D9E75] bg-[#1D9E75] hover:bg-[#179467]' : overdue ? 'border-[#A32D2D] hover:border-[#1D9E75]' : 'border-[#B7A99D] hover:border-[#1D9E75]'}`}>
           {task.progress === 'Done' && <span className="text-white text-[10px]">✓</span>}
         </button>
         <div className="flex flex-col min-w-0">
@@ -1669,11 +1702,12 @@ function BoardCard({ task, onOpen, isOverdue }) {
 }
 
 // =====================================================
-// Virtual sections for My Tasks: Overdue + Recently assigned
+// Virtual sections for My Tasks: Recently assigned only
+// Overdue tasks are shown inline in their original sections (with red stripe).
 // Flat layout matching the rest of the task list — shared columns,
 // inline section header, no card wrapper.
 // =====================================================
-function VirtualSections({ overdueTasks, recentlyAssignedTasks, members, currentMember, isOverdue, onOpen, onToggleDone, onAcknowledge }) {
+function VirtualSections({ recentlyAssignedTasks, members, currentMember, isOverdue, onOpen, onToggleDone, onAcknowledge }) {
   // Auto-acknowledge "Recently assigned" tasks 2s after they appear (debounced)
   useEffect(() => {
     if (!recentlyAssignedTasks?.length) return
@@ -1684,19 +1718,6 @@ function VirtualSections({ overdueTasks, recentlyAssignedTasks, members, current
 
   return (
     <div className="px-4 pt-3">
-      {overdueTasks.length > 0 && (
-        <VirtualSection
-          title="Overdue"
-          count={overdueTasks.length}
-          accent="#A32D2D"
-          countBg="rgba(226,75,74,0.10)"
-          tasks={overdueTasks}
-          members={members}
-          isOverdue={isOverdue}
-          onOpen={onOpen}
-          onToggleDone={onToggleDone}
-        />
-      )}
       {recentlyAssignedTasks.length > 0 && (
         <VirtualSection
           title="Recently assigned"
