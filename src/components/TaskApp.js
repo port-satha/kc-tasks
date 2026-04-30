@@ -40,14 +40,18 @@ export default function TaskApp({ projectId = null, projectName = null, settings
   const [filterStatus, setFilterStatus] = useState(initialPrefs.filterStatus || 'active')
   // My Tasks source filter — 'all' | 'mine' (created by me) | 'assigned' (assigned to me by others)
   const [filterSource, setFilterSource] = useState(initialPrefs.filterSource || 'all')
+  // My Tasks group filter — 'none' | 'date'
+  const [filterGroup, setFilterGroup] = useState(initialPrefs.filterGroup || 'none')
+  const [showGroupMenu, setShowGroupMenu] = useState(false)
+  const groupMenuRef = useRef(null)
   const [searchQuery, setSearchQuery] = useState('')
 
   // Persist key prefs on change
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const prefs = { view, collapsedSections, filterPriority, filterAssignee, filterStatus, filterSource }
+    const prefs = { view, collapsedSections, filterPriority, filterAssignee, filterStatus, filterSource, filterGroup }
     try { window.localStorage.setItem(prefsKey, JSON.stringify(prefs)) } catch {}
-  }, [view, collapsedSections, filterPriority, filterAssignee, filterStatus, filterSource, prefsKey])
+  }, [view, collapsedSections, filterPriority, filterAssignee, filterStatus, filterSource, filterGroup, prefsKey])
   const [showAddSection, setShowAddSection] = useState(false)
   const [newSectionName, setNewSectionName] = useState('')
   const [undoToast, setUndoToast] = useState(null)
@@ -68,8 +72,14 @@ export default function TaskApp({ projectId = null, projectName = null, settings
     return () => document.removeEventListener('mousedown', handler)
   }, [showFilterMenu])
 
+  useEffect(() => {
+    if (!showGroupMenu) return
+    const handler = (e) => { if (groupMenuRef.current && !groupMenuRef.current.contains(e.target)) setShowGroupMenu(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showGroupMenu])
+
   const activeFilterCount =
-    (filterStatus !== 'active' ? 1 : 0) +
     (filterPriority !== 'all' ? 1 : 0) +
     (filterAssignee !== 'all' ? 1 : 0)
 
@@ -616,8 +626,14 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       if (!grouped[sec]) grouped[sec] = []
       grouped[sec].push(t)
     }
+    // Sort within sections: by due date when filterGroup==='date', otherwise by sort_order
+    const dueSortVal = (t) => t.due ? new Date(t.due).getTime() : 9_999_999_999_999
     for (const sec in grouped) {
-      grouped[sec].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+      if (filterGroup === 'date') {
+        grouped[sec].sort((a, b) => dueSortVal(a) - dueSortVal(b))
+      } else {
+        grouped[sec].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+      }
     }
 
     const boardColumns = {}
@@ -631,7 +647,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
     return { filtered, overdueTasks, recentlyAssignedTasks, filteredActive, filteredDone, grouped, boardColumns }
   }, [
     topLevelTasks, activeTasks, doneTasks,
-    filterStatus, filterPriority, filterAssignee, filterSource, searchQuery,
+    filterStatus, filterPriority, filterAssignee, filterSource, filterGroup, searchQuery,
     projectId, currentMember?.id, user?.id, allSections, todayMs,
   ])
 
@@ -688,8 +704,9 @@ export default function TaskApp({ projectId = null, projectName = null, settings
         </div>
       </div>
 
-      {/* Toolbar — single row: view toggle · source filter (My Tasks) · filter dropdown · search */}
-      <div className="bg-[#D1CBC5] border-b border-[rgba(0,0,0,0.04)] px-4 py-2 flex items-center gap-2 sm:gap-3 flex-wrap">
+      {/* Toolbar — single row: view toggle · source pills · divider · status pills · filter ▾ · group ▾ · search */}
+      <div className="bg-[#D1CBC5] border-b border-[rgba(0,0,0,0.04)] px-4 py-2 flex items-center gap-2 sm:gap-2.5 flex-wrap">
+        {/* View toggle */}
         <div className="flex border border-[rgba(0,0,0,0.06)] rounded-lg overflow-hidden flex-shrink-0">
           {['list', 'board'].map(v => (
             <button key={v} onClick={() => setView(v)}
@@ -699,31 +716,47 @@ export default function TaskApp({ projectId = null, projectName = null, settings
           ))}
         </div>
 
-        {/* Source pills — only on My Tasks (no projectId), filters tasks by their origin */}
+        {/* Source pills — My Tasks only */}
         {!projectId && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <span className="text-[10px] text-[#9B8C82] uppercase tracking-wider hidden sm:inline mr-1">Source:</span>
             <button onClick={() => setFilterSource('all')}
-              className={`text-[11px] px-2.5 py-1 rounded-full transition-colors ${filterSource === 'all' ? 'bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.07)]'}`}>
+              className={`text-[11px] px-2.5 py-1 rounded-full transition-colors font-medium ${filterSource === 'all' ? 'bg-[#2C2C2A] text-[#DFDDD9]' : 'bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.07)]'}`}>
               All
             </button>
             <button onClick={() => setFilterSource('mine')}
               className={`text-[11px] px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${filterSource === 'mine' ? 'bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.07)]'}`}>
-              <span className="text-[#9B8C82]">+</span> Created by me
+              <span style={{ color: filterSource === 'mine' ? '#DFDDD9' : '#9B8C82' }}>+</span>
+              <span className="hidden sm:inline">Created by me</span>
             </button>
             <button onClick={() => setFilterSource('assigned')}
-              className={`text-[11px] px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${filterSource === 'assigned' ? 'bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.07)]'}`}>
-              <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M2 6h7m0 0L6 3m3 3L6 9" stroke="#185FA5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Assigned to me
+              className={`text-[11px] px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${filterSource === 'assigned' ? 'font-medium' : 'bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.07)]'}`}
+              style={filterSource === 'assigned' ? { background: 'rgba(55,138,221,0.15)', color: '#185FA5' } : {}}>
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none"><path d="M2 6h7m0 0L6 3m3 3L6 9" stroke={filterSource === 'assigned' ? '#185FA5' : '#9B8C82'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <span className="hidden sm:inline">Assigned to me</span>
               {assignedToMeCount > 0 && (
-                <span className="text-[9.5px] px-1.5 rounded-full font-semibold ml-0.5"
-                  style={{ background: filterSource === 'assigned' ? 'rgba(255,255,255,0.15)' : 'rgba(55,138,221,0.15)', color: filterSource === 'assigned' ? '#DFDDD9' : '#185FA5' }}>
+                <span className="text-[9.5px] px-1.5 rounded-full font-semibold"
+                  style={{ background: filterSource === 'assigned' ? 'rgba(24,95,165,0.15)' : 'rgba(55,138,221,0.15)', color: '#185FA5' }}>
                   {assignedToMeCount}
                 </span>
               )}
             </button>
           </div>
         )}
+
+        {/* Divider between source and status pills — My Tasks only */}
+        {!projectId && <div className="w-px h-4 bg-[rgba(0,0,0,0.1)] flex-shrink-0 hidden sm:block" />}
+
+        {/* Status pills — My Tasks inline; inside filter dropdown on project views */}
+        {!projectId ? (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {[['active', 'Active'], ['all', 'All'], ['done', 'Done']].map(([key, label]) => (
+              <button key={key} onClick={() => setFilterStatus(key)}
+                className={`text-[11px] px-2.5 py-1 rounded-full transition-colors font-medium ${filterStatus === key ? 'bg-[#2C2C2A] text-[#DFDDD9]' : 'bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.07)]'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {/* Filter dropdown */}
         <div className="relative flex-shrink-0" ref={filterMenuRef}>
@@ -734,17 +767,20 @@ export default function TaskApp({ projectId = null, projectName = null, settings
           </button>
           {showFilterMenu && (
             <div className="absolute left-0 top-full mt-1 w-64 bg-[#F5F3EF] border border-[rgba(0,0,0,0.06)] rounded-xl shadow-lg z-50 p-3 space-y-3">
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-[#B7A99D] mb-1.5">Status</p>
-                <div className="flex flex-wrap gap-1">
-                  {[['all', 'All'], ['active', 'Active'], ['done', 'Done']].map(([key, label]) => (
-                    <button key={key} onClick={() => setFilterStatus(key)}
-                      className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${filterStatus === key ? 'border-[#2C2C2A] bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'border-transparent bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.06)]'}`}>
-                      {label}
-                    </button>
-                  ))}
+              {/* Status — shown in dropdown only on project views; on My Tasks it's inline above */}
+              {projectId && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-[#B7A99D] mb-1.5">Status</p>
+                  <div className="flex flex-wrap gap-1">
+                    {[['all', 'All'], ['active', 'Active'], ['done', 'Done']].map(([key, label]) => (
+                      <button key={key} onClick={() => setFilterStatus(key)}
+                        className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${filterStatus === key ? 'border-[#2C2C2A] bg-[#2C2C2A] text-[#DFDDD9] font-medium' : 'border-transparent bg-[rgba(0,0,0,0.04)] text-[#9B8C82] hover:bg-[rgba(0,0,0,0.06)]'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-[#B7A99D] mb-1.5">Priority</p>
                 <div className="flex flex-wrap gap-1">
@@ -772,16 +808,40 @@ export default function TaskApp({ projectId = null, projectName = null, settings
                 </div>
               )}
               {activeFilterCount > 0 && (
-                <button onClick={() => { setFilterStatus('active'); setFilterPriority('all'); setFilterAssignee('all') }}
+                <button onClick={() => { setFilterPriority('all'); setFilterAssignee('all') }}
                   className="text-[10px] text-[#9B8C82] hover:text-[#2C2C2A] underline">Clear all filters</button>
               )}
             </div>
           )}
         </div>
 
+        {/* Group: by date ▾ — My Tasks only */}
+        {!projectId && (
+          <div className="relative flex-shrink-0" ref={groupMenuRef}>
+            <button onClick={() => setShowGroupMenu(v => !v)}
+              className={`text-[11px] px-3 py-1.5 rounded-lg border flex items-center gap-1 transition-colors ${filterGroup !== 'none' ? 'border-[#2C2C2A] bg-[#2C2C2A] text-[#DFDDD9]' : 'border-[rgba(0,0,0,0.08)] text-[#2C2C2A] hover:bg-[rgba(0,0,0,0.03)]'}`}>
+              Group: {filterGroup === 'date' ? 'by date' : 'none'}
+              <svg width="8" height="8" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+            {showGroupMenu && (
+              <div className="absolute left-0 top-full mt-1 w-40 bg-[#F5F3EF] border border-[rgba(0,0,0,0.06)] rounded-xl shadow-lg z-50 py-1">
+                <p className="text-[10px] uppercase tracking-wider text-[#B7A99D] px-3 py-1.5">Group by</p>
+                {[['none', 'None'], ['date', 'Due date']].map(([key, label]) => (
+                  <button key={key} onClick={() => { setFilterGroup(key); setShowGroupMenu(false) }}
+                    className={`w-full text-left text-[11px] px-3 py-1.5 hover:bg-[rgba(0,0,0,0.03)] transition-colors flex items-center gap-2 ${filterGroup === key ? 'text-[#2C2C2A] font-medium' : 'text-[#9B8C82]'}`}>
+                    {filterGroup === key && <span className="text-[10px]">✓</span>}
+                    {filterGroup !== key && <span className="w-[10px]" />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="ml-auto flex-shrink-0">
           <input type="text" placeholder="Search tasks..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            className="text-[11px] border border-[rgba(0,0,0,0.06)] rounded-lg px-3 py-1.5 w-32 sm:w-56 bg-[#F5F3EF] text-[#2C2C2A] placeholder-[#B7A99D] focus:outline-none focus:border-[#2C2C2A] transition-colors" />
+            className="text-[11px] border border-[rgba(0,0,0,0.06)] rounded-lg px-3 py-1.5 w-32 sm:w-48 bg-[#F5F3EF] text-[#2C2C2A] placeholder-[#B7A99D] focus:outline-none focus:border-[#2C2C2A] transition-colors" />
         </div>
       </div>
 
