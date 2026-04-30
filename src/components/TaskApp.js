@@ -769,6 +769,26 @@ export default function TaskApp({ projectId = null, projectName = null, settings
           </div>
         ) : null}
 
+        {/* Spacer — pushes right-side actions to the far right */}
+        <div className="flex-1 min-w-0" />
+
+        {/* Divider before right-side actions — My Tasks only */}
+        {!projectId && <div className="w-px h-4 bg-[rgba(0,0,0,0.1)] flex-shrink-0 hidden sm:block" />}
+
+        {/* Overdue filter pill — My Tasks only, only when there are overdue tasks */}
+        {!projectId && overdueTasks.length > 0 && (
+          <button onClick={() => setFilterOverdue(v => !v)}
+            className="text-[11px] px-2.5 py-1 rounded-full flex items-center gap-1 font-medium flex-shrink-0 transition-colors"
+            style={{
+              background: filterOverdue ? 'rgba(226,74,74,0.15)' : 'rgba(226,74,74,0.10)',
+              color: '#A32D2D',
+              border: '0.5px solid rgba(226,74,74,0.2)',
+            }}>
+            ⚠ Overdue · {overdueTasks.length}
+            {filterOverdue && <span className="ml-0.5 opacity-70">✕</span>}
+          </button>
+        )}
+
         {/* Filter dropdown */}
         <div className="relative flex-shrink-0" ref={filterMenuRef}>
           <button onClick={() => setShowFilterMenu(v => !v)}
@@ -850,21 +870,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
           </div>
         )}
 
-        {/* Overdue filter pill — My Tasks only, only when there are overdue tasks */}
-        {!projectId && overdueTasks.length > 0 && (
-          <button onClick={() => setFilterOverdue(v => !v)}
-            className="text-[11px] px-2.5 py-1 rounded-full flex items-center gap-1 font-medium flex-shrink-0 transition-colors"
-            style={{
-              background: filterOverdue ? 'rgba(226,74,74,0.15)' : 'rgba(226,74,74,0.10)',
-              color: '#A32D2D',
-              border: '0.5px solid rgba(226,74,74,0.2)',
-            }}>
-            ⚠ Overdue · {overdueTasks.length}
-            {filterOverdue && <span className="ml-0.5 opacity-70">✕</span>}
-          </button>
-        )}
-
-        <div className="ml-auto flex-shrink-0">
+        <div className="flex-shrink-0">
           <input type="text" placeholder="Search tasks..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             className="text-[11px] border border-[rgba(0,0,0,0.06)] rounded-lg px-3 py-1.5 w-32 sm:w-48 bg-[#F5F3EF] text-[#2C2C2A] placeholder-[#B7A99D] focus:outline-none focus:border-[#2C2C2A] transition-colors" />
         </div>
