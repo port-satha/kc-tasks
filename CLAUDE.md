@@ -288,9 +288,18 @@ Order storage: tasks.order_index float. Insert between two items: (prev + next) 
 
 ---
 
+## Tasks system — what has been built (do not rebuild or undo)
+
+- My Tasks unified view: source filter (All/Created by me/Assigned to me), is_acknowledged column, Recently assigned virtual section ✓
+- Overdue visual treatment: red left stripe on card (border-l-[3px] border-l-[#A32D2D] on per-row card wrapper), red checkbox border, red bold date, section overdue count badges, ⚠ Overdue filter pill in toolbar — tasks stay in original sections, no displacement ✓
+- Green "Today" text for tasks due today ✓
+- Filter bar: single row, source pills left, status pills middle, Overdue+Filter+Group right, flex spacer + divider separating left and right groups ✓
+- Per-row card structure: each SortableTaskRow is its own card (rounded-xl, overdue → rounded-r-xl square left edge) — section container is a plain flex-col gap-[2px], no overflow-hidden ✓
+
+---
+
 ## Tasks system — next to build
 
-- My Tasks unified view (source filter + Recently assigned virtual section + is_acknowledged)
 - Mobile drag and drop via @dnd-kit TouchSensor
 - Sidebar 3-zone redesign (Board removed, Settings at bottom)
 - Optimistic reorder (fix the "forever to load" drag bug)
