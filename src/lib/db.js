@@ -49,7 +49,7 @@ export async function createRecurringFollowUp(supabase, task) {
 
   const newTask = {
     title: task.title,
-    section: 'Recently assigned',
+    section: task.section || null,
     due: nextDue,
     priority: task.priority,
     value: task.value,
@@ -165,17 +165,8 @@ export async function fetchTasks(supabase, { projectId = null, memberId = null, 
           c._parentTask = parentMap[c.parent_task_id] || null
           c._project = projectMap[c.project_id] || null
           c._isAssignedChild = true
-          // For child tasks in My Tasks: if section still matches parent's section,
-          // the user hasn't moved it yet — show in "Recently assigned"
-          if (c.parent_task_id) {
-            const parentSection = c._parentTask?.section || c._project?.section
-            // If section is empty, matches parent, or is a project section name, default to Recently assigned
-            if (!c.section || c.section === '' || c.section === parentSection) {
-              c.section = 'Recently assigned'
-            }
-          } else if (!c.section || c.section === '') {
-            c.section = 'Recently assigned'
-          }
+          // Preserve the task's actual section (null/empty means unsectioned — shown at bottom)
+          if (!c.section || c.section === '') c.section = null
           existingIds.add(c.id)
           topLevel.push(c)
         })
@@ -209,7 +200,7 @@ export async function fetchTasks(supabase, { projectId = null, memberId = null, 
             due: st.due,
             assigned_to: st.assigned_to,
             progress: st.done ? 'Done' : 'Not started',
-            section: 'Recently assigned',
+            section: null,
             subtasks: [],
             children: [],
             _parentTask: { id: st.task.id, title: st.task.title, project_id: st.task.project_id },
@@ -232,11 +223,11 @@ export async function fetchTasks(supabase, { projectId = null, memberId = null, 
 export async function createTask(supabase, taskData) {
   // Clean empty strings to null for date/enum fields
   const cleaned = { ...taskData }
-  const nullIfEmpty = ['due', 'priority', 'value', 'effort', 'progress', 'assigned_to']
+  const nullIfEmpty = ['due', 'priority', 'value', 'effort', 'progress', 'assigned_to', 'section']
   nullIfEmpty.forEach(f => { if (cleaned[f] === '') cleaned[f] = null })
 
   // is_acknowledged: if assigned to someone OTHER than the creator, mark as
-  // unacknowledged so it surfaces in their "Recently assigned" section.
+  // unacknowledged so it surfaces in their "Recently assigned" virtual section.
   // Self-created or unassigned tasks default to acknowledged.
   if (cleaned.assigned_to && cleaned.created_by) {
     // Look up the assignee's profile_id via the members table

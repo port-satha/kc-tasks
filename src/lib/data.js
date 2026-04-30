@@ -1,5 +1,4 @@
 export const DEFAULT_SECTIONS = [
-  'Recently assigned',
   '2025 Big Rocks',
   'Most Important Lists',
   'Past Deadline',

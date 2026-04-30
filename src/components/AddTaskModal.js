@@ -6,7 +6,7 @@ import MemberPicker from './MemberPicker'
 export default function AddTaskModal({ members, sections: customSections, onClose, onAdd, defaultSection }) {
   const sections = customSections && customSections.length > 0 ? customSections : DEFAULT_SECTIONS
   const [form, setForm] = useState({
-    title: '', section: defaultSection || sections[0] || 'Recently assigned', priority: '',
+    title: '', section: defaultSection || sections[0] || '', priority: '',
     value: '', effort: '', progress: '', due: '', notes: '', assigned_to: null
   })
   const [showRecurrence, setShowRecurrence] = useState(false)

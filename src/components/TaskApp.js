@@ -625,7 +625,7 @@ export default function TaskApp({ projectId = null, projectName = null, settings
       if (filterOverdue && !projectId) {
         if (!(t.due && t.progress !== 'Done' && new Date(t.due).getTime() < todayMs)) continue
       }
-      const sec = t.section || 'Recently assigned'
+      const sec = t.section || 'No section'
       if (!grouped[sec]) grouped[sec] = []
       grouped[sec].push(t)
     }
